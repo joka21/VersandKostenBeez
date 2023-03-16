@@ -34,6 +34,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                 include_once 'Breez-integration.php';
                 // Register the integration.
                 add_filter( 'woocommerce_integrations', array( $this, 'add_integration' ) );
+
                 // Set the plugin slug
                 define( 'MY_PLUGIN_SLUG', 'wc-settings' );
 
@@ -59,6 +60,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         }
 
     }
+$Versand_Kosten_Beez_Plugin = new Versand_Kosten_Beez_Plugin( __FILE__ );
 endif; 
 
 ?>

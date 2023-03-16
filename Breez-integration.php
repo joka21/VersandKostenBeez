@@ -9,8 +9,8 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
          */
         public function __construct() {
             global $woocommerce;
-            $this->id                 = 'Versand_Kosten_Beez';
-            $this->method_title       = __( 'Versand Kosten Beez');
+            $this->id                 = 'versand-kosten-beez-integration';
+            $this->method_title       = __( 'Versand Kosten Beez Integration');
             $this->method_description = __( 'Berechnet die Versandkosten!');
 
             // Load the settings.
@@ -30,10 +30,10 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
         */
         public function init_form_fields() {
             $this->form_fields = array(
-                'Test ' => array(
+                'custom_name ' => array(
                     'title'             => __( 'Versandkosten für Krefeld und Münster'),
                     'type'              => 'text',
-                    'description'       => __( $this->calculate_shipping(47805, 48147) ),
+                    'description'       => __( 'Test' ),
                     'desc_tip'          => true,
                     'default'           => '',
                     'css'      => 'width:170px;',
