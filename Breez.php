@@ -1,6 +1,6 @@
 <?php
 /*
- * Plugin Name:       Versand_Kosten_Beez
+ * Plugin Name:       Versand Kosten Beez
  * 
  * Description:       Berechnet die Versandkosten!
  * Version:           1.0

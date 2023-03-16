@@ -10,8 +10,8 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
         public function __construct() {
             global $woocommerce;
             $this->id                 = 'versand-kosten-beez-integration';
-            $this->method_title       = __( 'Versand Kosten Beez Integration');
-            $this->method_description = __( 'Berechnet die Versandkosten!');
+            $this->method_title       = __( 'Versand Kosten Beez Einstellungen');
+            $this->method_description = __( 'Einstellungen für die Berechnung der Versandkosten' );
 
             // Load the settings.
             $this->init_form_fields();
@@ -23,12 +23,10 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
             $this->lohnkosten = $this->get_option( 'lohnkosten' );
             $this->abschreibung_pro_km = $this->get_option( 'abschreibung_pro_km' );
             $this->wartungskosten = $this->get_option( 'wartungskosten' );
-            $this->origin_zip = $this->get_option( 'plz1_input' );
+            $this->origin_zip = $this->get_option( 'origin_zip' );
 
-            // Test bezüglich der Berechnung
-            $this->plz1 = $this->get_option( 'plz1_input' );
-            $this->plz2 = $this->get_option( 'plz2_input' );
             /*
+            $this->plz2 = $this->get_option( 'plz2_input' );
             $this->entfernung_output = $this->get_option( 'entfernung_output' );
             $this->fahrzeit_output = $this->get_option( 'fahrzeit_output' );
             $this->kosten_output = $this->get_option( 'kosten_output' );*/
@@ -47,53 +45,41 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
             $this->form_fields = array(
                 'spritpreis' => array(
                     'title'             => __( 'Spritpreis'),
-                    'type'              => 'number',
-                    'description'       => __( 'Aktueller Spritpreis' ),
-                    'desc_tip'          => true,
-                    'default'           => '',
+                    'description'       => __( 'Aktueller Spritpreis pro Liter'),
+                    'type'              => 'decimal',
                     'css'      => 'width:170px;',
                 ),
                 'spritverbrauch' => array(
                     'title'             => __( 'Spritverbrauch'),
-                    'type'              => 'number',
-                    'description'       => __( '' ),
-                    'desc_tip'          => false,
-                    'default'           => '',
+                    'description'       => __( 'Spritverbrauch in Litern pro 100 Kilometer'),
+                    'type'              => 'decimal',
                     'css'      => 'width:170px;',
                 ),
                 'lohnkosten' => array(
-                    'title'             => __( 'Lohnkosten pro Stunde'),
-                    'type'              => 'number',
-                    'description'       => __( '' ),
-                    'desc_tip'          => false,
-                    'default'           => '',
+                    'title'             => __( 'Lohnkosten'),
+                    'description'       => __( 'Lohnkosten in € pro Stunde'),
+                    'type'              => 'decimal',
                     'css'      => 'width:170px;',
                 ),
                 'abschreibung_pro_km' => array(
-                    'title'             => __( 'Abschreibung pro km'),
-                    'type'              => 'number',
-                    'description'       => __( '' ),
-                    'desc_tip'          => false,
-                    'default'           => '',
+                    'title'             => __( 'Abschreibungen'),
+                    'description'       => __( 'Abschreibungen in € pro km'),
+                    'type'              => 'decimal',
                     'css'      => 'width:170px;',
                 ),
                 'wartungskosten' => array(
-                    'title'             => __( 'Wartungskosten pro km'),
-                    'type'              => 'number',
-                    'description'       => __( '' ),
-                    'desc_tip'          => false,
-                    'default'           => '',
+                    'title'             => __( 'Wartungskosten'),
+                    'description'       => __( 'Wartungskosten in € pro km'),
+                    'type'              => 'decimal',
                     'css'      => 'width:170px;',
                 ),
                 'origin_zip' => array(
-                    'title'             => __( 'Postleitzahl des Versandorts'),
-                    'type'              => 'number',
-                    'validate'          => 'validate_german_zip',
-                    'description'       => __( '' ),
-                    'desc_tip'          => false,
-                    'default'           => '',
+                    'title'             => __( 'Versand Postleitzahl'),
+                    'description'       => __( 'Postleitzahl des Versandorts'),
+                    'type'              => 'text',
                     'css'      => 'width:170px;',
                 ),
+                /*
                 'plz2' => array(
                     'title'             => __( 'plz2'),
                     'type'              => 'text',
@@ -102,7 +88,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                     'default'           => '',
                     'css'      => 'width:170px;',
                 ),
-                /*
                 'entfernung_output' => array(
                     'title'             => __( 'Entfernung'),
                     'type'              => 'text',
@@ -149,13 +134,21 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
             $url .= '?' . http_build_query($params);
             $response = file_get_contents($url);
             $data = json_decode($response);
-            return $data->success;
+            if ($data->status == 'true' && $data['count']>0) {
+                return true;
+            }else{
+                return false;
+            }
         }
         
 
-        /*
+        /**
          * Calculate distance and duration between two zip codes with Google Maps API
-         * */
+         * @param string $origin_zip
+         * @param string $destination_zip
+         * @param string $travel_mode
+         * @return array $distance, $duration in meters and seconds
+         */
         function get_distance_duration($origin_zip, $destination_zip, $travel_mode = 'driving') {
             $api_key = 'your_api_key'; // TODO: Replace with your Google Maps API key
             $url = 'https://maps.googleapis.com/maps/api/distancematrix/json';
@@ -181,7 +174,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
         /**
         * Calculate shipping function.
         *
-        * @param array $package Order package.
+        * @param string $destination_plz
         * @return Integer $versandkosten
         */
         public function calculate_shipping($destination_plz) {
