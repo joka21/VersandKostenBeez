@@ -36,7 +36,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                 add_filter( 'woocommerce_integrations', array( $this, 'add_integration' ) );
 
                 // Set the plugin slug
-                define( 'MY_PLUGIN_SLUG', 'wc-settings' );
+                define( 'VERSAND_KOSTEN_BEEZ_SLUG', 'wc-settings' );
 
                 // Setting action for plugin
                 add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'Versand_Kosten_Beez_Plugin_action_links' );
@@ -54,13 +54,14 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
             return $integrations;
         }
 
-        function Versand_Kosten_Beez_Plugin_action_links( $links ) {
-            $links[] = '<a href="'. menu_page_url( MY_PLUGIN_SLUG, false ) .'&tab=integration">Settings</a>';
-            return $links;
-        }
+       
 
     }
 $Versand_Kosten_Beez_Plugin = new Versand_Kosten_Beez_Plugin( __FILE__ );
+function Versand_Kosten_Beez_Plugin_action_links( $links ) {
+    $links[] = '<a href="'. menu_page_url( VERSAND_KOSTEN_BEEZ_SLUG, false ) .'&tab=integration">Settings</a>';
+    return $links;
+}
 endif; 
 
 ?>
