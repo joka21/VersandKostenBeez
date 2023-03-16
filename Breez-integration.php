@@ -23,13 +23,15 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
             $this->lohnkosten = $this->get_option( 'lohnkosten' );
             $this->abschreibung_pro_km = $this->get_option( 'abschreibung_pro_km' );
             $this->wartungskosten = $this->get_option( 'wartungskosten' );
+            $this->origin_zip = $this->get_option( 'plz1_input' );
 
             // Test bezüglich der Berechnung
             $this->plz1 = $this->get_option( 'plz1_input' );
             $this->plz2 = $this->get_option( 'plz2_input' );
+            /*
             $this->entfernung_output = $this->get_option( 'entfernung_output' );
             $this->fahrzeit_output = $this->get_option( 'fahrzeit_output' );
-            $this->kosten_output = $this->get_option( 'kosten_output' );
+            $this->kosten_output = $this->get_option( 'kosten_output' );*/
 
 
             // Actions.
@@ -41,6 +43,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
         * Initialize integration settings form fields.
         */
         public function init_form_fields() {
+
             $this->form_fields = array(
                 'spritpreis' => array(
                     'title'             => __( 'Spritpreis'),
@@ -60,7 +63,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                 ),
                 'lohnkosten' => array(
                     'title'             => __( 'Lohnkosten pro Stunde'),
-                    'type'              => 'text',
+                    'type'              => 'number',
                     'description'       => __( '' ),
                     'desc_tip'          => false,
                     'default'           => '',
@@ -68,7 +71,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                 ),
                 'abschreibung_pro_km' => array(
                     'title'             => __( 'Abschreibung pro km'),
-                    'type'              => 'text',
+                    'type'              => 'number',
                     'description'       => __( '' ),
                     'desc_tip'          => false,
                     'default'           => '',
@@ -76,15 +79,16 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                 ),
                 'wartungskosten' => array(
                     'title'             => __( 'Wartungskosten pro km'),
-                    'type'              => 'text',
+                    'type'              => 'number',
                     'description'       => __( '' ),
                     'desc_tip'          => false,
                     'default'           => '',
                     'css'      => 'width:170px;',
                 ),
-                'plz1' => array(
-                    'title'             => __( 'plz1'),
-                    'type'              => 'text',
+                'origin_zip' => array(
+                    'title'             => __( 'Postleitzahl des Versandorts'),
+                    'type'              => 'number',
+                    'validate'          => 'validate_german_zip',
                     'description'       => __( '' ),
                     'desc_tip'          => false,
                     'default'           => '',
@@ -98,6 +102,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                     'default'           => '',
                     'css'      => 'width:170px;',
                 ),
+                /*
                 'entfernung_output' => array(
                     'title'             => __( 'Entfernung'),
                     'type'              => 'text',
@@ -121,51 +126,88 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                     'desc_tip'          => false,
                     'default'           => ($this->plz1 != null && $this->plz2 != null) ? calculate_shipping($this->plz1, $this->plz2) : '',,
                     'css'      => 'width:170px;',
-                ),
+                ),*/
                 
             );
         }
 
-
-        /**
-         * Calculate distance and duration between two german zip codes.
-         * @param $plz1
-         * @param $plz2
-         * @return array $data  Distance and duration between two zip codes.
-         */
-        private function calculate_distance_and_duration($plz1, $plz2){
-            //calculate distance between two german zip codes
-            $url = "https://www.distance24.org/route.json?stops=".$plz1."|".$plz2;
-            $json = file_get_contents($url);
-            $data = json_decode($json, true);
-            return $data;
+        /*
+         * Validate German zip codes 
+         * */
+        function validate_german_zip($zip) {
+            $url = 'https://www.postdirekt.de/plzserver/PlzAjaxServlet';
+            $params = array(
+                'finda' => 'city',
+                'lang' => 'de_DE',
+                'cacheable' => 'true',
+                'city' => '',
+                'location' => '',
+                'state' => '',
+                'plz' => $zip,
+                'submit' => 'Suchen',
+            );
+            $url .= '?' . http_build_query($params);
+            $response = file_get_contents($url);
+            $data = json_decode($response);
+            return $data->success;
         }
+        
+
+        /*
+         * Calculate distance and duration between two zip codes with Google Maps API
+         * */
+        function get_distance_duration($origin_zip, $destination_zip, $travel_mode = 'driving') {
+            $api_key = 'your_api_key'; // TODO: Replace with your Google Maps API key
+            $url = 'https://maps.googleapis.com/maps/api/distancematrix/json';
+            $params = array(
+                'origins' => $origin_zip . ', Germany',
+                'destinations' => $destination_zip . ', Germany',
+                'mode' => $travel_mode,
+                'key' => $api_key,
+            );
+            $url .= '?' . http_build_query($params);
+            $response = file_get_contents($url);
+            $data = json_decode($response);
+            if ($data->status == 'OK') {
+                $distance = $data->rows[0]->elements[0]->distance->value;
+                $duration = $data->rows[0]->elements[0]->duration->value;
+                return array('distance' => $distance, 'duration' => $duration);
+            } else {
+                return false;
+            }
+        }
+        
 
         /**
         * Calculate shipping function.
         *
         * @param array $package Order package.
+        * @return Integer $versandkosten
         */
-        public function calculate_shipping($plz) {
-            $data = $this->calculate_distance_and_duration($plz, $plz2);
-            $entfernung = $data['distance'];
-            $fahrzeit = $data['duration'];
+        public function calculate_shipping($destination_plz) {
+            if(validate_german_zip($destination_plz)){
+                $result = get_distance_duration($this->$origin_zip, $destination_plz);
+                if ($result) {
+                    // Convert meters to kilometers and seconds to hours
+                    $entfernung = $result['distance'] / 1000;
+                    $fahrzeit = $result['duration'] / 3600;
 
-            //TODO: dynamisch gestalten
-            $spritpreis = 1.5;
-            $spritverbrauch = 7;
-            $lohnkosten = 10;
-            $abschreibung_pro_km = 0.1;
-            $Wartungskosten = 0.1;
+                    // Berechnung der Kilometerkosten
+                    $kosten_pro_km = ($this->$spritpreis * $this->$spritverbrauch)/100 - $this->$abschreibung_pro_km + $this->$wartungskosten;
 
-            $kosten_pro_km = ($spritpreis * $spritverbrauch)/100 + ($lohnkosten * $fahrzeit) - $abschreibung_pro_km + $Wartungskosten;
+                    // Berechnung der Versandkosten
+                    $versandkosten = ($entfernung * $kosten_pro_km + ($this->$lohnkosten * $fahrzeit)) * 2 ;
+                    $versandkosten = round($kosten, 2);
+                    return $versandkosten;
 
-            $versandkosten = $entfernung * $kosten_pro_km * 2;
-            $versandkosten = round($kosten, 2);
-            $versandkosten = $kosten . "€";
-            $versandkosten = str_replace(".", ",", $kosten);
-            $versandkosten = "Versandkosten: " . $kosten;
-            return $versandkosten;
+                } else {
+                    throw new Exception('Error in Google Maps API');
+                    return false;
+                }
+            }else{
+                throw new Exception('Invalid German Zip Code');
+                return false;
+            }
         }
     }
 endif; 
