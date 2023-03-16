@@ -2,7 +2,7 @@
 /*
  * Plugin Name:       Versand_Kosten_Beez
  * 
- * Description:       Berechnet die Versandkosten.
+ * Description:       Berechnet die Versandkosten!
  * Version:           1.0
  
  * Requires PHP:      7.2
