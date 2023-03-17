@@ -4,13 +4,17 @@
  */
 if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
     class Versand_Kosten_Beez_Integration extends WC_Integration {
+
+
+
+
         /**
          * Init and hook in the integration.
          */
         public function __construct() {
             global $woocommerce;
-            $this->id                 = 'versand-kosten-beez-integration';
-            $this->method_title       = __( 'Versand Kosten Beez Einstellungen');
+            $this->id = 'versand-kosten-beez-integration';
+            $this->method_title = __( 'Versand Kosten Beez Einstellungen');
             $this->method_description = __( 'Einstellungen für die Berechnung der Versandkosten' );
 
             // Load the settings.
@@ -25,13 +29,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
             $this->wartungskosten = $this->get_option( 'wartungskosten' );
             $this->origin_zip = $this->get_option( 'origin_zip' );
 
-            /*
-            $this->plz2 = $this->get_option( 'plz2_input' );
-            $this->entfernung_output = $this->get_option( 'entfernung_output' );
-            $this->fahrzeit_output = $this->get_option( 'fahrzeit_output' );
-            $this->kosten_output = $this->get_option( 'kosten_output' );*/
-
-
             // Actions.
             add_action( 'woocommerce_update_options_integration_' .  $this->id, array( $this, 'process_admin_options' ) );
         }
@@ -41,7 +38,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
         * Initialize integration settings form fields.
         */
         public function init_form_fields() {
-
             $this->form_fields = array(
                 'spritpreis' => array(
                     'title'             => __( 'Spritpreis'),
@@ -79,40 +75,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                     'type'              => 'text',
                     'css'      => 'width:170px;',
                 ),
-                /*
-                'plz2' => array(
-                    'title'             => __( 'plz2'),
-                    'type'              => 'text',
-                    'description'       => __( '' ),
-                    'desc_tip'          => false,
-                    'default'           => '',
-                    'css'      => 'width:170px;',
-                ),
-                'entfernung_output' => array(
-                    'title'             => __( 'Entfernung'),
-                    'type'              => 'text',
-                    'description'       => __( '' ),
-                    'desc_tip'          => false,
-                    'default'           => ($this->plz1 != null && $this->plz2 != null) ? calculate_distance_and_duration($this->plz1, $this->plz2)['distance'] : '',
-                    'css'      => 'width:170px;',
-                ),
-                'fahrzeit_output' => array(
-                    'title'             => __( 'Fahtzeit'),
-                    'type'              => 'text',
-                    'description'       => __( '' ),
-                    'desc_tip'          => false,
-                    'default'           => ($this->plz1 != null && $this->plz2 != null) ? calculate_distance_and_duration($this->plz1, $this->plz2)['duration'] : '',
-                    'css'      => 'width:170px;',
-                ),
-                'kosten_output' => array(
-                    'title'             => __( 'Kosten'),
-                    'type'              => 'text',
-                    'description'       => __( '' ),
-                    'desc_tip'          => false,
-                    'default'           => ($this->plz1 != null && $this->plz2 != null) ? calculate_shipping($this->plz1, $this->plz2) : '',,
-                    'css'      => 'width:170px;',
-                ),*/
-                
             );
         }
 
@@ -184,15 +146,14 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                     // Convert meters to kilometers and seconds to hours
                     $entfernung = $result['distance'] / 1000;
                     $fahrzeit = $result['duration'] / 3600;
-
-                    // Berechnung der Kilometerkosten
-                    $kosten_pro_km = ($this->$spritpreis * $this->$spritverbrauch)/100 - $this->$abschreibung_pro_km + $this->$wartungskosten;
-
-                    // Berechnung der Versandkosten
-                    $versandkosten = ($entfernung * $kosten_pro_km + ($this->$lohnkosten * $fahrzeit)) * 2 ;
-                    $versandkosten = round($kosten, 2);
-                    return $versandkosten;
-
+                    
+                    $result = calculate_shipping_costs($entfernung, $fahrzeit);
+                    if ($result) {
+                        return $result;
+                    } else {
+                        throw new Exception('Error in calculate_shipping_costs');
+                        return false;
+                    }
                 } else {
                     throw new Exception('Error in Google Maps API');
                     return false;
@@ -201,6 +162,18 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                 throw new Exception('Invalid German Zip Code');
                 return false;
             }
+        }
+
+        public function calculate_shipping_costs($entfernung, $fahrzeit){
+            if(isset($this->abschreibung_pro_km) && isset($this->spritpreis) && isset($this->spritverbrauch) && isset($this->lohnkosten)){
+                $kosten_pro_km = ($this->$spritpreis * $this->$spritverbrauch)/100 - $this->$abschreibung_pro_km + $this->$wartungskosten;
+
+                // Berechnung der Versandkosten
+                $versandkosten = ($entfernung * $kosten_pro_km + ($this->$lohnkosten * $fahrzeit)) * 2;
+                $versandkosten = round($kosten, 2);
+                return $versandkosten;
+            }
+            return false;
         }
     }
 endif; 
