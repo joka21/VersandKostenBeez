@@ -4,30 +4,34 @@
  */
 if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
     class Versand_Kosten_Beez_Integration extends WC_Integration {
+        public $id                   = 'versand-kosten-beez-integration';
+        public $method_title         = ('Versand Kosten Beez Einstellungen');
+        public $method_description   = ('Einstellungen für die Berechnung der Versandkosten' );
 
 
+        private float $spritpreis;
+        private float $spritverbrauch;
+        private float $lohnkosten;
+        private float $abschreibung_pro_km;
+        private float $wartungskosten;
+        private int $origin_plz;
 
 
         /**
          * Init and hook in the integration.
          */
         public function __construct() {
-            global $woocommerce;
-            $this->id = 'versand-kosten-beez-integration';
-            $this->method_title = __( 'Versand Kosten Beez Einstellungen');
-            $this->method_description = __( 'Einstellungen für die Berechnung der Versandkosten' );
-
             // Load the settings.
             $this->init_form_fields();
             $this->init_settings();
 
             // Define user set variables.
-            $this->spritpreis = $this->get_option( 'spritpreis' );
-            $this->spritverbrauch = $this->get_option( 'spritverbrauch' );
-            $this->lohnkosten = $this->get_option( 'lohnkosten' );
-            $this->abschreibung_pro_km = $this->get_option( 'abschreibung_pro_km' );
-            $this->wartungskosten = $this->get_option( 'wartungskosten' );
-            $this->origin_zip = $this->get_option( 'origin_zip' );
+            $this->spritpreis           = doubleval($this->get_option( 'spritpreis' ));
+            $this->spritverbrauch       = doubleval($this->get_option( 'spritverbrauch'));
+            $this->lohnkosten           = doubleval($this->get_option( 'lohnkosten' ));
+            $this->abschreibung_pro_km  = doubleval($this->get_option( 'abschreibung_pro_km'));
+            $this->wartungskosten       = doubleval($this->get_option( 'wartungskosten' ));
+            $this->origin_plz           = intval($this->get_option( 'origin_plz' ));
 
             // Actions.
             add_action( 'woocommerce_update_options_integration_' .  $this->id, array( $this, 'process_admin_options' ) );
@@ -69,7 +73,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                     'type'              => 'decimal',
                     'css'      => 'width:170px;',
                 ),
-                'origin_zip' => array(
+                'origin_plz' => array(
                     'title'             => __( 'Versand Postleitzahl'),
                     'description'       => __( 'Postleitzahl des Versandorts'),
                     'type'              => 'text',
@@ -78,9 +82,12 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
             );
         }
 
-        /*
-         * Validate German zip codes 
-         * */
+        /**
+         * Validate German zip code with Postdirekt API
+         * TODO: Fehler herausfinden
+         * @param string $zip
+         * @return bool
+         */
         function validate_german_zip($zip) {
             $url = 'https://www.postdirekt.de/plzserver/PlzAjaxServlet';
             $params = array(
@@ -106,13 +113,15 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
 
         /**
          * Calculate distance and duration between two zip codes with Google Maps API
+         * TODO: Google Maps API key ersetzen
          * @param string $origin_zip
          * @param string $destination_zip
          * @param string $travel_mode
          * @return array $distance, $duration in meters and seconds
+         * @throws Exception
          */
         function get_distance_duration($origin_zip, $destination_zip, $travel_mode = 'driving') {
-            $api_key = 'your_api_key'; // TODO: Replace with your Google Maps API key
+            $api_key = 'your_api_key';
             $url = 'https://maps.googleapis.com/maps/api/distancematrix/json';
             $params = array(
                 'origins' => $origin_zip . ', Germany',
@@ -128,52 +137,64 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                 $duration = $data->rows[0]->elements[0]->duration->value;
                 return array('distance' => $distance, 'duration' => $duration);
             } else {
-                return false;
+                throw new Exception('Error in Google Maps API');
             }
         }
         
 
         /**
-        * Calculate shipping function.
-        *
+        * Shipping cost function.
         * @param string $destination_plz
-        * @return Integer $versandkosten
+        * @return double $versandkosten
         */
-        public function calculate_shipping($destination_plz) {
-            if(validate_german_zip($destination_plz)){
-                $result = get_distance_duration($this->$origin_zip, $destination_plz);
-                if ($result) {
-                    // Convert meters to kilometers and seconds to hours
-                    $entfernung = $result['distance'] / 1000;
-                    $fahrzeit = $result['duration'] / 3600;
+        public function get_shipping_costs($destination_plz) {
+            // Validate German zip code
+            if($this->validate_german_zip($destination_plz)){
+                // Get distance and duration between origin and destination
+                $result = $this->get_distance_duration($this->origin_plz, $destination_plz);
                     
-                    $result = calculate_shipping_costs($entfernung, $fahrzeit);
-                    if ($result) {
-                        return $result;
-                    } else {
-                        throw new Exception('Error in calculate_shipping_costs');
-                        return false;
-                    }
-                } else {
-                    throw new Exception('Error in Google Maps API');
-                    return false;
-                }
+                // Convert meters to kilometers and seconds to hours
+                $entfernung = $result['distance'] / 1000;
+                $fahrzeit = $result['duration'] / 3600;
+                    
+                // Calculate shipping costs and return
+                return $this->calculate_shipping_costs($entfernung, $fahrzeit);
             }else{
                 throw new Exception('Invalid German Zip Code');
-                return false;
             }
         }
 
-        public function calculate_shipping_costs($entfernung, $fahrzeit){
-            if(isset($this->abschreibung_pro_km) && isset($this->spritpreis) && isset($this->spritverbrauch) && isset($this->lohnkosten)){
-                $kosten_pro_km = ($this->$spritpreis * $this->$spritverbrauch)/100 - $this->$abschreibung_pro_km + $this->$wartungskosten;
 
-                // Berechnung der Versandkosten
-                $versandkosten = ($entfernung * $kosten_pro_km + ($this->$lohnkosten * $fahrzeit)) * 2;
-                $versandkosten = round($kosten, 2);
-                return $versandkosten;
+        /**
+         * Calculate shipping costs
+         * @param double $entfernung in kilometers
+         * @param double $fahrzeit in hours
+         * @return double $versandkosten
+         */
+        public function calculate_shipping_costs($entfernung, $fahrzeit){
+            if(isset($entfernung) && isset($fahrzeit) && $entfernung != null && $fahrzeit != null && $entfernung > 0 && $fahrzeit > 0 &&
+                isset($this->spritpreis) && isset($this->spritverbrauch) && isset($this->abschreibung_pro_km)  && isset($this->lohnkosten) && isset($this->wartungskosten) &&
+                $this->spritpreis != null && $this->spritverbrauch != null && $this->abschreibung_pro_km != null && $this->lohnkosten != null && $this->wartungskosten != null
+            ){
+                // Convert all values to double
+                $entfernung = doubleval($entfernung);
+                $fahrzeit = doubleval($fahrzeit);
+                $spritpreis = doubleval($this->spritpreis);
+                $spritverbrauch = doubleval($this->spritverbrauch);
+                $abschreibung_pro_km = doubleval($this->abschreibung_pro_km);
+                $lohnkosten = doubleval($this->lohnkosten);
+                $wartungskosten = doubleval($this->wartungskosten);
+
+                // Calculate costs per km
+                $kosten_pro_km = (($spritpreis * $spritverbrauch) / 100) - $abschreibung_pro_km + $wartungskosten;
+
+                // Calculate total costs
+                $versandkosten = (($entfernung * $kosten_pro_km) + ($lohnkosten * $fahrzeit)) * 2;
+
+                // round to 2 decimal places and return
+                return round($versandkosten, 2);
             }
-            return false;
+            throw new Exception('Not all variables have been set for calculating the shipping costs');
         }
     }
 endif; 
