@@ -67,17 +67,17 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
     // Add popup and input field to WooCommerce product page
     function add_popup_input_field() {
         //Add text with current postleitzahl saved in cookie
-        echo '<p id="postleitzahl-output">Postleitzahl: ' . $_COOKIE['postleitzahl'] . '</p>';
+        echo '<p id="plz-output">Postleitzahl: ' . $_COOKIE['plz'] . '</p>';
 
         // Add button to open popup
         echo '<button type="button" class="btn-popup">Postleitzahl ändern</button>';
         
         // Add popup and input field
-        echo '<dialog id="postleitzahl-popup" class="postleitzahl-popup" style="display:none;z-index:99999;">
-                <div class="postleitzahl-popup-content">
-                    <form id="postleitzahl-form">
-                        <label for="postleitzahl-input">Bitte geben Sie die Postleitzahl des Liefergebiets ein:</label>
-                        <input type="text" id="postleitzahl-input" name="postleitzahl" required>
+        echo '<dialog id="plz-popup" class="plz-popup" style="display:none;z-index:99999;">
+                <div class="plz-popup-content">
+                    <form id="plz-form">
+                        <label for="plz-input">Bitte geben Sie die Postleitzahl des Liefergebiets ein:</label>
+                        <input type="text" id="plz-input" name="plz" required>
                         <button type="cancel">Abbrechen</button>
                         <button type="submit">Weiter zum Preis</button>
                     </form>
@@ -134,19 +134,25 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                             data: {
                                 action: "get_shipping_costs",
                                 post_id: post_id,
-                                postleitzahl: plz
+                                plz: plz
                             },
                             success: function(response) {
-                                var product_name = "'.wc_get_product()->get_name().'";
-                                var product_price = parseFloat("'. wc_get_product()->get_price() .'", 2)
-                                var shipping_costs = parseFloat(response, 2);
-                                var total_costs = product_price + shipping_costs;
+                                var responseObj = JSON.parse(response);
 
-                                jQuery("#product-name").text(product_name);
-                                jQuery("#single-product-price .price-value .woocommerce-Price-amount.amount").text(product_price.toFixed(2));
-                                jQuery("#shipping-costs .price-value .woocommerce-Price-amount.amount").text(shipping_costs.toFixed(2));
-                                jQuery("#total-costs .price-value .woocommerce-Price-amount.amount").text(total_costs.toFixed(2));
+                                if(responseObj.status == "success") {
+                                    var product_name = "'.wc_get_product()->get_name().'";
+                                    var product_price = parseFloat("'. wc_get_product()->get_price() .'", 2)
+                                    var shipping_costs = parseFloat(responseObj.shipping_costs, 2);
+                                    var total_costs = product_price + shipping_costs;
 
+                                    jQuery("#product-name").text(product_name);
+                                    jQuery("#single-product-price .price-value .woocommerce-Price-amount.amount").text(product_price.toFixed(2));
+                                    jQuery("#shipping-costs .price-value .woocommerce-Price-amount.amount").text(shipping_costs.toFixed(2));
+                                    jQuery("#total-costs .price-value .woocommerce-Price-amount.amount").text(total_costs.toFixed(2));
+                                } else {
+                                    alert("Error: " + responseObj.message);
+                                    jQuery("#plz-popup").show();
+                                }
                             },
                             error: function(xhr, status, error) {
                                 alert("Error: " + error);
@@ -158,71 +164,71 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
 
                     //function to change postleitzahl cookie
                     function change_postleitzahl(plz) {
-                        document.cookie = "postleitzahl=" + plz;
-                        set_postleitzahl_output(postleitzahl);
                         fill_total_cost_overview(plz);
+                        set_postleitzahl_output(plz);
+                        document.cookie = "plz=" + plz + "; SameSite=strict; Secure";
                     }
 
                     //function to get postleitzahl cookie
                     function get_postleitzahl_cookie() {
-                        var postleitzahl = "";
+                        var plz = "";
                         var allcookies = document.cookie;
                         cookiearray = allcookies.split(\';\');
                         for(var i=0; i<cookiearray.length; i++) {
                             name = cookiearray[i].split(\'=\')[0];
                             value = cookiearray[i].split(\'=\')[1];
-                            if (name.trim() === "postleitzahl") {
-                                postleitzahl = value;
+                            if (name.trim() === "plz") {
+                                plz = value;
                             }
                         }
-                        return postleitzahl;
+                        return plz;
                     }
 
                     //function to set postleitzahl output
                     function set_postleitzahl_output(plz) {
-                        jQuery("#postleitzahl-output").text("Lieferung zur Postleitzahl: " + plz);
+                        jQuery("#plz-output").text("Lieferung zur Postleitzahl: " + plz);
                     }
 
 
                     // Check if postleitzahl-cookie has a value
-                    var postleitzahl = get_postleitzahl_cookie();
+                    var plz = get_postleitzahl_cookie();
 
-                    if (postleitzahl === "") {
+                    if (plz === "") {
                         // If postleitzahl is empty, show popup
-                        jQuery("#postleitzahl-popup").fadeIn();
+                        jQuery("#plz-popup").fadeIn();
                     }else{
                         // If postleitzahl is not empty, get shipping costs
-                        set_postleitzahl_output(postleitzahl)
-                        fill_total_cost_overview(postleitzahl);
+                        set_postleitzahl_output(plz)
+                        fill_total_cost_overview(plz);
                     }
                     
                     // Handle popup and form submission
-                    jQuery(".postleitzahl-popup").click(function(event) {
+                    jQuery(".plz-popup").click(function(event) {
                         if (event.target === this) {
-                            var postleitzahl = jQuery("#postleitzahl-input").val();
-                            set_postleitzahl_output(postleitzahl);
-                            change_postleitzahl(postleitzahl);
+                            var plz = jQuery("#plz-input").val();
+                            set_postleitzahl_output(plz);
+                            change_postleitzahl(plz);
                             jQuery(this).fadeOut();
                         }
                     });
 
                     jQuery(".btn-popup").click(function() {
-                        jQuery("#postleitzahl-popup").fadeIn();
-                        jQuery("#postleitzahl-input").val("");
-                        jQuery("#postleitzahl-input").focus();
+                        jQuery("#plz-popup").fadeIn();
+                        jQuery("#plz-input").val("");
+                        jQuery("#plz-input").focus();
                     });
 
-                    jQuery("#postleitzahl-form").submit(function(event) {
+                    jQuery("#plz-form").submit(function(event) {
                         event.preventDefault();
-                        var postleitzahl = jQuery("#postleitzahl-input").val();
-                        if (postleitzahl !== "") {
+                        var plz = jQuery("#plz-input").val();
+                        if (plz !== "") {
                             // Update Postleitzahl
-                            change_postleitzahl(postleitzahl);
+                            change_postleitzahl(plz);
                             
                             // Close popup
-                            jQuery("#postleitzahl-popup").fadeOut();
+                            jQuery("#plz-popup").fadeOut();
                         } else {
-                            alert("Please enter a value for the postleitzahl.");
+                            alert("Bitte gen Sie eine Postleizahl ein.");
                         }
                     });
                 });
@@ -234,14 +240,23 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
      * Get shipping costs from Integration
      */
     function get_shipping_costs() {
-        $plz = $_POST['postleitzahl'];
-        echo "170,00";
-        /*
-        $integration = new Versand_Kosten_Beez_Integration();
-        $shipping_costs = $integration->get_shipping_costs($plz);
+        $plz = $_POST['plz'];
 
-        echo $shipping_costs;
-        */
+        $integration = new Versand_Kosten_Beez_Integration();
+        try{
+            $shipping_costs = $integration->get_shipping_costs($plz);
+            $ret = array(
+                'status' => "success",
+                'shipping_costs' => $shipping_costs
+            );
+        }catch(Exception $e){
+            $ret = array(
+                'status' => "error",
+                'message' => $e->getMessage()
+            );
+        }
+
+        echo json_encode($ret);
         wp_die();
     }
 
@@ -256,6 +271,25 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
             'product_price' => wc_get_product()->get_price()
         ));
     }*/
+
+
+    //add dynamic shipping costs to cart
+    add_action( 'woocommerce_cart_calculate_fees', 'add_dynamic_shipping_costs' );
+    function add_dynamic_shipping_costs( $cart ) {
+        if ( did_action( 'woocommerce_before_calculate_totals' ) >= 2 )
+            return;
+
+        $plz = $_COOKIE["plz"] ?? null;
+        if($plz === null) {
+            throw new Exception("Postleitzahl ist nicht gesetzt");
+        }
+
+        $integration = new Versand_Kosten_Beez_Integration();
+        $shipping_costs = $integration->get_shipping_costs($plz);
+
+        $cart->add_fee( 'Versandkosten', $shipping_costs );
+    }
+
 
     //add_action('wp_enqueue_scripts','init_product_scripts');
     add_action('wp_footer', 'add_popup_jquery' );
