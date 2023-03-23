@@ -83,31 +83,20 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
         }
 
         /**
-         * Validate German zip code with Postdirekt API
-         * TODO: Fehler herausfinden
-         * @param string $zip
+         * Validate German zip code with GeoNames API
+         * @License: Creative COmmons Attribution 4.0 License -> https://creativecommons.org/licenses/by/4.0/
+         * -> TODO: Geonames muss mit Link genannt werden (oder man baut es aus)
+         * Premium-Lizenzen möglich
+         * @param string $plz
          * @return bool
          */
-        function validate_german_zip($zip) {
-            $url = 'https://www.postdirekt.de/plzserver/PlzAjaxServlet';
-            $params = array(
-                'finda' => 'city',
-                'lang' => 'de_DE',
-                'cacheable' => 'true',
-                'city' => '',
-                'location' => '',
-                'state' => '',
-                'plz' => $zip,
-                'submit' => 'Suchen',
-            );
-            $url .= '?' . http_build_query($params);
+        function validate_german_zip($plz) {
+            if(!preg_match('/^\d{5}$/',$plz)) return false;
+            $url = 'http://geonames.org/postalCodeLookupJSON?postalcode='.$plz.'&country=DE';
             $response = file_get_contents($url);
-            $data = json_decode($response);
-            if ($data->status == 'true' && $data['count']>0) {
-                return true;
-            }else{
-                return false;
-            }
+            $resp_arr = json_decode($response,true);
+            $rw = isset($resp_arr["postalcodes"]) && count($resp_arr["postalcodes"]) >= 1;
+            return $rw; 
         }
         
 
@@ -120,7 +109,11 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
          * @return array $distance, $duration in meters and seconds
          * @throws Exception
          */
-        function get_distance_duration($origin_zip, $destination_zip, $travel_mode = 'driving') {
+        private function get_distance_duration($origin_zip, $destination_zip, $travel_mode = 'driving') {
+            //DUMMY-WERT:
+            return array('distance' => 120000, 'duration' => 7200);
+
+
             $api_key = 'your_api_key';
             $url = 'https://maps.googleapis.com/maps/api/distancematrix/json';
             $params = array(
@@ -160,7 +153,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                 // Calculate shipping costs and return
                 return $this->calculate_shipping_costs($entfernung, $fahrzeit);
             }else{
-                throw new Exception('Invalid German Zip Code');
+                throw new Exception('Der eingegebene Wert entspricht keiner deutschen Postleitzahl.');
             }
         }
 
@@ -171,7 +164,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
          * @param double $fahrzeit in hours
          * @return double $versandkosten
          */
-        public function calculate_shipping_costs($entfernung, $fahrzeit){
+        private function calculate_shipping_costs($entfernung, $fahrzeit){
             if(isset($entfernung) && isset($fahrzeit) && $entfernung != null && $fahrzeit != null && $entfernung > 0 && $fahrzeit > 0 &&
                 isset($this->spritpreis) && isset($this->spritverbrauch) && isset($this->abschreibung_pro_km)  && isset($this->lohnkosten) && isset($this->wartungskosten) &&
                 $this->spritpreis != null && $this->spritverbrauch != null && $this->abschreibung_pro_km != null && $this->lohnkosten != null && $this->wartungskosten != null
@@ -194,7 +187,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                 // round to 2 decimal places and return
                 return round($versandkosten, 2);
             }
-            throw new Exception('Not all variables have been set for calculating the shipping costs');
+            throw new Exception('Es sind nicht alle Variablen für die Versandkostenberechnung gesetzt.');
         }
     }
 endif; 
