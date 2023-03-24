@@ -65,63 +65,71 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
 
 
     // Add popup and input field to WooCommerce product page
-    function add_popup_input_field() {
-        //Add text with current postleitzahl saved in cookie
-        echo '<p id="plz-output">Postleitzahl: ' . $_COOKIE['plz'] . '</p>';
-
-        // Add button to open popup
-        echo '<button type="button" class="btn-popup">Postleitzahl ändern</button>';
-        
-        // Add popup and input field
-        echo '<dialog id="plz-popup" class="plz-popup" style="display:none;z-index:99999;">
-                <div class="plz-popup-content">
-                    <form id="plz-form">
-                        <label for="plz-input">Bitte geben Sie die Postleitzahl des Liefergebiets ein:</label>
-                        <input type="text" id="plz-input" name="plz" required>
-                        <button type="cancel">Abbrechen</button>
-                        <button type="submit">Weiter zum Preis</button>
-                    </form>
-                </div>
-            </dialog>';
-
-        echo /*html*/'
-        <div id="total-cost-overview">
-            <h2>Preise:</h2>
-            <!-- ------------------------------------------------------------ -->
-            <div id="single-product-price">
-                <span id="product-name" class="price-label">placeholder</span>
-                <span class="price-value">
-                    <span class="woocommerce-Price-amount amount">
-                        placeholder
-                    </span>
-                    <span class="woocommerce-Price-currencySymbol">€</span>
-                </span>
-            </div>
-            <div id="shipping-costs">
-                <span class="price-label">+ Lieferkosten:</span>
-                <span class="price-value">
-                    <span class="woocommerce-Price-amount amount">
-                        placeholder
-                    </span>
-                    <span class="woocommerce-Price-currencySymbol">€</span>
-                </span>
-            </div>
-            <!-- ============================================================= -->
-            <div id="total-costs">
-                <span class="price-label">Gesamt:</span>
-                <span class="price-value">
-                    <span class="woocommerce-Price-amount amount">
-                        placeholder
-                    </span>
-                    <span class="woocommerce-Price-currencySymbol">€</span>
-                </span>
-            </div>
-        </div>';
-    }
     add_action( 'woocommerce_single_product_summary', 'add_popup_input_field', 30 );
+    
+    function add_popup_input_field() {
+
+        if(is_product()) {
+
+            //Add text with current postleitzahl saved in cookie
+            echo '<p id="plz-output">Postleitzahl: ' . $_COOKIE['plz'] . '</p>';
+
+            // Add button to open popup
+            echo '<button type="button" class="btn-popup">Postleitzahl ändern</button>';
+            
+            // Add popup and input field
+            echo '<dialog id="plz-popup" class="plz-popup" style="display:none;z-index:99999;">
+                    <div class="plz-popup-content">
+                        <form id="plz-form">
+                            <label for="plz-input">Bitte geben Sie die Postleitzahl des Liefergebiets ein:</label>
+                            <input type="text" id="plz-input" name="plz" required>
+                            <button type="cancel">Abbrechen</button>
+                            <button type="submit">Weiter zum Preis</button>
+                        </form>
+                    </div>
+                </dialog>';
+
+            echo /*html*/'
+            <div id="total-cost-overview">
+                <h2>Preise:</h2>
+                <!-- ------------------------------------------------------------ -->
+                <div id="single-product-price">
+                    <span id="product-name" class="price-label">placeholder</span>
+                    <span class="price-value">
+                        <span class="woocommerce-Price-amount amount">
+                            placeholder
+                        </span>
+                        <span class="woocommerce-Price-currencySymbol">€</span>
+                    </span>
+                </div>
+                <div id="shipping-costs">
+                    <span class="price-label">+ Lieferkosten:</span>
+                    <span class="price-value">
+                        <span class="woocommerce-Price-amount amount">
+                            placeholder
+                        </span>
+                        <span class="woocommerce-Price-currencySymbol">€</span>
+                    </span>
+                </div>
+                <!-- ============================================================= -->
+                <div id="total-costs">
+                    <span class="price-label">Gesamt:</span>
+                    <span class="price-value">
+                        <span class="woocommerce-Price-amount amount">
+                            placeholder
+                        </span>
+                        <span class="woocommerce-Price-currencySymbol">€</span>
+                    </span>
+                </div>
+            </div>';
+        }
+    }
 
     // Add javascript-code for product page
+    add_action('wp_footer', 'add_popup_jquery' );
     function add_popup_jquery() {
+        //check if we are on a product page
+        if(is_product()) {
         
         echo /*html*/'<script>
                 jQuery(document).ready(function() {
@@ -233,12 +241,14 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                     });
                 });
             </script>';
-            
+        }
     }
 
     /**
      * Get shipping costs from Integration
      */
+    add_action('wp_ajax_get_shipping_costs', 'get_shipping_costs' );
+    add_action('wp_ajax_nopriv_get_shipping_costs', 'get_shipping_costs' );
     function get_shipping_costs() {
         $plz = $_POST['plz'];
 
@@ -260,18 +270,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         wp_die();
     }
 
-    /*
-    function init_product_scripts() {
-        wp_register_script('breez-product-js', plugins_url(__FILE__).'/js/Breez_product.js', array('jquery'), '1.0', false);
-        wp_enqueue_style('breez-product-js');
-        
-        wp_localize_script('breez-product-js', 'php_vars', array(
-            'ajax_url' => admin_url( 'admin-ajax.php' ),
-            'product_name' => wc_get_product()->get_name(),
-            'product_price' => wc_get_product()->get_price()
-        ));
-    }*/
-
 
     //add dynamic shipping costs to cart
     add_action( 'woocommerce_cart_calculate_fees', 'add_dynamic_shipping_costs' );
@@ -290,11 +288,34 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         $cart->add_fee( 'Versandkosten', $shipping_costs );
     }
 
+   
+    add_action( 'woocommerce_checkout_process', 'checkout_check_shipping_plz' );
+    function checkout_check_shipping_plz() {
+        $cart = WC()->cart;
+        $integration = new Versand_Kosten_Beez_Integration();
 
-    //add_action('wp_enqueue_scripts','init_product_scripts');
-    add_action('wp_footer', 'add_popup_jquery' );
-    add_action('wp_ajax_get_shipping_costs', 'get_shipping_costs' );
-    add_action('wp_ajax_nopriv_get_shipping_costs', 'get_shipping_costs' );
+        $cookie_plz = $_COOKIE["plz"] ?? null;
+        $cart_plz = $cart->get_customer()->get_billing_postcode();
+
+        if($integration->validate_german_zip($cart_plz) === false) {
+            wc_add_notice( "Bitte geben Sie eine gültige Postleitzahl ein.", 'error' );
+            return;
+        }
+        
+        if($cart_plz != $cookie_plz) {
+            wc_add_notice( "Die Postleitzahl in Ihrem Warenkorb ist nicht mit der Postleitzahl in Ihrem Kundenkonto übereinstimmend. Der Versandpreis wurde an die neue Postleitzahl angepasst", 'notice' );
+            //set plz cookie same site strict for 30 days
+            setcookie("plz", $cart_plz, time() + (86400 * 30));
+            return;
+        }
+
+        $shipping_costs = $integration->get_shipping_costs($cart_plz);
+
+        $cart->add_fee( 'Versandkosten' , $shipping_costs );
+    }
+
 endif; 
+
+
 
 ?>

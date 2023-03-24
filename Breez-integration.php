@@ -14,6 +14,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
         private float $lohnkosten;
         private float $abschreibung_pro_km;
         private float $wartungskosten;
+        private float $beentladen;
         private int $origin_plz;
 
 
@@ -31,6 +32,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
             $this->lohnkosten           = doubleval($this->get_option( 'lohnkosten' ));
             $this->abschreibung_pro_km  = doubleval($this->get_option( 'abschreibung_pro_km'));
             $this->wartungskosten       = doubleval($this->get_option( 'wartungskosten' ));
+            $this->beentladen           = doubleval($this->get_option( 'beentladen' ));
             $this->origin_plz           = intval($this->get_option( 'origin_plz' ));
 
             // Actions.
@@ -50,7 +52,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                     'css'      => 'width:170px;',
                 ),
                 'spritverbrauch' => array(
-                    'title'             => __( 'Spritverbrauch'),
+                    'title'             => __( 'Spritverbrauch / 100km'),
                     'description'       => __( 'Spritverbrauch in Litern pro 100 Kilometer'),
                     'type'              => 'decimal',
                     'css'      => 'width:170px;',
@@ -68,8 +70,14 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                     'css'      => 'width:170px;',
                 ),
                 'wartungskosten' => array(
-                    'title'             => __( 'Wartungskosten'),
-                    'description'       => __( 'Wartungskosten in € pro km'),
+                    'title'             => __( 'Wartungskosten / 10000km'),
+                    'description'       => __( 'Wartungskosten in € pro 10000 km'),
+                    'type'              => 'decimal',
+                    'css'      => 'width:170px;',
+                ),
+                'beentladen' => array(
+                    'title'             => __( 'Be- und Entladung'),
+                    'description'       => __( 'Be- und Entladungskosten €'),
                     'type'              => 'decimal',
                     'css'      => 'width:170px;',
                 ),
@@ -90,7 +98,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
          * @param string $plz
          * @return bool
          */
-        function validate_german_zip($plz) {
+        public function validate_german_zip($plz) {
             if(!preg_match('/^\d{5}$/',$plz)) return false;
             $url = 'http://geonames.org/postalCodeLookupJSON?postalcode='.$plz.'&country=DE';
             $response = file_get_contents($url);
@@ -130,7 +138,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                 $duration = $data->rows[0]->elements[0]->duration->value;
                 return array('distance' => $distance, 'duration' => $duration);
             } else {
-                throw new Exception('Error in Google Maps API');
+                throw new Exception('Es kam zu einem Fehler beim Zugriff auf die Google Maps API');
             }
         }
         
@@ -165,9 +173,9 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
          * @return double $versandkosten
          */
         private function calculate_shipping_costs($entfernung, $fahrzeit){
-            if(isset($entfernung) && isset($fahrzeit) && $entfernung != null && $fahrzeit != null && $entfernung > 0 && $fahrzeit > 0 &&
-                isset($this->spritpreis) && isset($this->spritverbrauch) && isset($this->abschreibung_pro_km)  && isset($this->lohnkosten) && isset($this->wartungskosten) &&
-                $this->spritpreis != null && $this->spritverbrauch != null && $this->abschreibung_pro_km != null && $this->lohnkosten != null && $this->wartungskosten != null
+            if(isset($entfernung) && isset($fahrzeit) && $entfernung !== null && $fahrzeit !== null && $entfernung > 0 && $fahrzeit > 0 &&
+                isset($this->spritpreis) && isset($this->spritverbrauch) && isset($this->abschreibung_pro_km)  && isset($this->lohnkosten) && isset($this->wartungskosten) && isset($this->beentladen) &&
+                $this->spritpreis !== null && $this->spritverbrauch !== null && $this->abschreibung_pro_km !== null && $this->lohnkosten !== null && $this->wartungskosten !== null && $this->beentladen !== null
             ){
                 // Convert all values to double
                 $entfernung = doubleval($entfernung);
@@ -177,12 +185,13 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) :
                 $abschreibung_pro_km = doubleval($this->abschreibung_pro_km);
                 $lohnkosten = doubleval($this->lohnkosten);
                 $wartungskosten = doubleval($this->wartungskosten);
+                $beendladen = doubleval($this->beentladen);
 
                 // Calculate costs per km
-                $kosten_pro_km = (($spritpreis * $spritverbrauch) / 100) - $abschreibung_pro_km + $wartungskosten;
+                $kosten_pro_km = (($spritpreis * $spritverbrauch) / 100)  + ($wartungskosten / 10000) - $abschreibung_pro_km;
 
                 // Calculate total costs
-                $versandkosten = (($entfernung * $kosten_pro_km) + ($lohnkosten * $fahrzeit)) * 2;
+                $versandkosten = ((($entfernung * $kosten_pro_km) + ($lohnkosten * $fahrzeit)) * 2) + $beendladen;
 
                 // round to 2 decimal places and return
                 return round($versandkosten, 2);
