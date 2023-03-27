@@ -12,9 +12,17 @@
  * License URI:       https://www.gnu.org/licenses/gpl-2.0.html
  * Update URI:        https://example.co
  * Text Domain:       my-basics-plugin
- 
  */
 
+
+ /*
+define( 'WP_DEBUG', true );
+define( 'WP_DEBUG_LOG', true );
+define( 'WP_DEBUG_DISPLAY', false );
+@ini_set( 'display_errors', 0 );*/
+
+
+// Include the main Versand_Kosten_Beez_Plugin class.
 if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
     class Versand_Kosten_Beez_Plugin {
         /**
@@ -30,8 +38,17 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         public function init() {
             // Checks if WooCommerce is installed.
             if ( class_exists( 'WC_Integration' ) ) {
-                // Include our integration class.
-                include_once 'Breez-integration.php';
+                /*
+                if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) {
+                    include_once 'Breez-integration.php';
+                }
+                */
+                
+                // Include the main Versand_Kosten_Beez_Shipping_Method class.
+                if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' ) ) {
+                    include_once 'Breez-shipping-method.php';
+                }
+
 
                 // Register the integration.
                 add_filter( 'woocommerce_integrations', array( $this, 'add_integration' ) );
@@ -65,18 +82,17 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
          * @param array $integrations
          * @return array
          */
+        /*
         public function add_integration( $integrations ) {
             $integrations[] = 'Versand_Kosten_Beez_Integration';
             return $integrations;
-        }
-
+        }*/
 
         /**
          * Add popup and input field to WooCommerce product page
          */
         function add_popup_input_field() {
             if(is_product()) {
-                $integration = new Versand_Kosten_Beez_Integration();
                 $plz = $_COOKIE['plz'] ?? "";
 
                 //Add text with current postleitzahl saved in cookie
@@ -184,7 +200,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                             function change_postleitzahl(plz) {
                                 fill_total_cost_overview(plz);
                                 set_postleitzahl_output(plz);
-                                document.cookie = "plz=" + plz + "; SameSite=strict; Secure";
+                                document.cookie="plz="+plz+";path=/";
                             }
 
                             //function to get postleitzahl cookie
@@ -261,7 +277,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         function get_shipping_costs() {
             $plz = $_POST['plz'];
 
-            $integration = new Versand_Kosten_Beez_Integration();
+            $integration = new Versand_Kosten_Beez_Shipping_Method();
             try{
                 $shipping_costs = $integration->get_shipping_costs($plz);
                 $ret = array(
@@ -278,15 +294,18 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
             echo json_encode($ret);
             wp_die();
         }
+        
 
-
+        /*
         function add_dynamic_shipping_costs( $cart ) {
-            if ( did_action( 'woocommerce_before_calculate_totals' ) >= 2 )
+            if(!(is_cart() || is_checkout()) || did_action( 'woocommerce_before_calculate_totals' ) >= 2 )
                 return;
 
             $plz = $_COOKIE["plz"] ?? null;
             if($plz === null) {
-                throw new Exception("Postleitzahl ist nicht gesetzt");
+                $cart->add_fee( 'Versandkosten', null );
+                //wc_add_notice(__( "Bitte geben Sie eine gültige Postleitzahl ein.", 'woocommerce' ), 'notice' );
+                return;
             }
 
             $integration = new Versand_Kosten_Beez_Integration();
@@ -300,29 +319,29 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
             $integration = new Versand_Kosten_Beez_Integration();
 
             $cookie_plz = $_COOKIE["plz"] ?? null;
-            $cart_plz = $cart->get_customer()->get_billing_postcode();
+            $cart_plz = get_user_meta( get_current_user_id(), 'shipping_postcode', true );
 
             if($integration->validate_german_zip($cart_plz) === false) {
-                wc_add_notice( "Bitte geben Sie eine gültige Postleitzahl ein.", 'error' );
+                wc_add_notice( __("Bitte geben Sie eine gültige Postleitzahl ein.", "woocommerce"), 'error' );
                 return;
             }
             
             if($cart_plz != $cookie_plz) {
-                wc_add_notice( "Die Postleitzahl in Ihrem Warenkorb ist nicht mit der Postleitzahl in Ihrem Kundenkonto übereinstimmend. Der Versandpreis wurde an die neue Postleitzahl angepasst", 'notice' );
-                //set plz cookie same site strict for 30 days
-                setcookie("plz", $cart_plz, time() + (86400 * 30));
+                wc_add_notice( __("Die Postleitzahl in Ihrem Warenkorb ist nicht mit der Postleitzahl in Ihrem Kundenkonto übereinstimmend. Der Versandpreis wurde an die neue Postleitzahl angepasst", "woocommerce"), 'notice' );
+                //set plz cookie for 30 days
+                setcookie("plz", $cart_plz, time() + (86400 * 30), "/");
                 return;
             }
 
             $shipping_costs = $integration->get_shipping_costs($cart_plz);
 
             $cart->add_fee( 'Versandkosten' , $shipping_costs );
-        }
+        }*/
     }
 
     $Versand_Kosten_Beez_Plugin = new Versand_Kosten_Beez_Plugin( __FILE__ );
     function Versand_Kosten_Beez_Plugin_action_links( $links ) {
-        $links[] = '<a href="'. menu_page_url( VERSAND_KOSTEN_BEEZ_SLUG, false ) .'&tab=integration">Settings</a>';
+        $links[] = '<a href="'. menu_page_url( VERSAND_KOSTEN_BEEZ_SLUG, false ) .'&tab=shipping&section=versand-kosten-beez-shipping-method">Settings</a>';
         return $links;
     }
 
