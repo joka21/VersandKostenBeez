@@ -15,13 +15,6 @@
  */
 
 
- /*
-define( 'WP_DEBUG', true );
-define( 'WP_DEBUG_LOG', true );
-define( 'WP_DEBUG_DISPLAY', false );
-@ini_set( 'display_errors', 0 );*/
-
-
 // Include the main Versand_Kosten_Beez_Plugin class.
 if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
     class Versand_Kosten_Beez_Plugin {
@@ -36,57 +29,31 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         * Init the plugin
         */
         public function init() {
-            // Checks if WooCommerce is installed.
-            if ( class_exists( 'WC_Integration' ) ) {
-                /*
-                if ( ! class_exists( 'Versand_Kosten_Beez_Integration' ) ) {
-                    include_once 'Breez-integration.php';
-                }
-                */
-                
-                // Include the main Versand_Kosten_Beez_Shipping_Method class.
-                if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' ) ) {
-                    include_once 'Breez-shipping-method.php';
-                }
-
-
-                // Register the integration.
-                add_filter( 'woocommerce_integrations', array( $this, 'add_integration' ) );
-
-                // Set the plugin slug
-                define( 'VERSAND_KOSTEN_BEEZ_SLUG', 'wc-settings' );
-
-                // Setting action for plugin
-                add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'Versand_Kosten_Beez_Plugin_action_links' );
-
-                // Add popup and input field to WooCommerce product page
-                add_action( 'woocommerce_single_product_summary', array($this, 'add_popup_input_field'), 30);
-
-                // Add jQuery to footer
-                add_action('wp_head', array($this, 'add_popup_jquery'));
-
-                // Add ajax action to get shipping costs
-                add_action('wp_ajax_get_shipping_costs', array($this, 'get_shipping_costs'));
-                add_action('wp_ajax_nopriv_get_shipping_costs', array($this, 'get_shipping_costs'));
-
-                //add dynamic shipping costs to cart
-                add_action( 'woocommerce_cart_calculate_fees', array($this, 'add_dynamic_shipping_costs'));
-
-                //check if set chipping costs are valid for billing plz
-                add_action( 'woocommerce_checkout_process', array($this, 'checkout_check_shipping_plz'));
+            
+            // Include the main Versand_Kosten_Beez_Shipping_Method class.
+            if(!class_exists('Versand_Kosten_Beez_Shipping_Method')){
+                require_once('Breez-shipping-method.php');
             }
-        }
 
-        /**
-         * Add a new integration to WooCommerce.
-         * @param array $integrations
-         * @return array
-         */
-        /*
-        public function add_integration( $integrations ) {
-            $integrations[] = 'Versand_Kosten_Beez_Integration';
-            return $integrations;
-        }*/
+            // Init shipping method
+            $this->shipping_method = new Versand_Kosten_Beez_Shipping_Method();
+
+            // Set the plugin slug
+            define( 'VERSAND_KOSTEN_BEEZ_SLUG', 'wc-settings' );
+
+            // Setting action for plugin
+            add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'Versand_Kosten_Beez_Plugin_action_links' );
+
+            // Add popup and input field to WooCommerce product page
+            add_action( 'woocommerce_single_product_summary', array($this, 'add_popup_input_field'), 30);
+
+            // Add jQuery to footer
+            add_action('wp_head', array($this, 'add_popup_jquery'));
+
+            // Add ajax action to get shipping costs
+            add_action('wp_ajax_get_shipping_costs', array($this, 'get_shipping_costs'));
+            add_action('wp_ajax_nopriv_get_shipping_costs', array($this, 'get_shipping_costs'));
+        }
 
         /**
          * Add popup and input field to WooCommerce product page
@@ -272,14 +239,21 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         }
 
         /**
-         * Get shipping costs from Integration
+         * Get shipping costs from Shipping Method
          */
         function get_shipping_costs() {
             $plz = $_POST['plz'];
-
-            $integration = new Versand_Kosten_Beez_Shipping_Method();
             try{
-                $shipping_costs = $integration->get_shipping_costs($plz);
+                $shipping_costs = $this->shipping_method->get_shipping_costs($plz);
+
+                //change shipping postcode of user
+                $woocommerce = WC();
+                $woocommerce->customer->set_shipping_postcode($plz);
+                $woocommerce->customer->set_shipping_city("Berlin"); // mit API ersetzen
+                //$woocommerce->customer->set_shipping_state("NRW"); -> herausfinden wie
+                $woocommerce->customer->set_shipping_country("DE");
+                $woocommerce->customer->save();
+
                 $ret = array(
                     'status' => "success",
                     'shipping_costs' => $shipping_costs
@@ -294,49 +268,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
             echo json_encode($ret);
             wp_die();
         }
-        
-
-        /*
-        function add_dynamic_shipping_costs( $cart ) {
-            if(!(is_cart() || is_checkout()) || did_action( 'woocommerce_before_calculate_totals' ) >= 2 )
-                return;
-
-            $plz = $_COOKIE["plz"] ?? null;
-            if($plz === null) {
-                $cart->add_fee( 'Versandkosten', null );
-                //wc_add_notice(__( "Bitte geben Sie eine gültige Postleitzahl ein.", 'woocommerce' ), 'notice' );
-                return;
-            }
-
-            $integration = new Versand_Kosten_Beez_Integration();
-            $shipping_costs = $integration->get_shipping_costs($plz);
-
-            $cart->add_fee( 'Versandkosten', $shipping_costs );
-        }
-
-        function checkout_check_shipping_plz() {
-            $cart = WC()->cart;
-            $integration = new Versand_Kosten_Beez_Integration();
-
-            $cookie_plz = $_COOKIE["plz"] ?? null;
-            $cart_plz = get_user_meta( get_current_user_id(), 'shipping_postcode', true );
-
-            if($integration->validate_german_zip($cart_plz) === false) {
-                wc_add_notice( __("Bitte geben Sie eine gültige Postleitzahl ein.", "woocommerce"), 'error' );
-                return;
-            }
-            
-            if($cart_plz != $cookie_plz) {
-                wc_add_notice( __("Die Postleitzahl in Ihrem Warenkorb ist nicht mit der Postleitzahl in Ihrem Kundenkonto übereinstimmend. Der Versandpreis wurde an die neue Postleitzahl angepasst", "woocommerce"), 'notice' );
-                //set plz cookie for 30 days
-                setcookie("plz", $cart_plz, time() + (86400 * 30), "/");
-                return;
-            }
-
-            $shipping_costs = $integration->get_shipping_costs($cart_plz);
-
-            $cart->add_fee( 'Versandkosten' , $shipping_costs );
-        }*/
     }
 
     $Versand_Kosten_Beez_Plugin = new Versand_Kosten_Beez_Plugin( __FILE__ );
