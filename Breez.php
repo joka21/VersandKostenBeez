@@ -70,11 +70,11 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                 
                 // Add popup and input field
                 ?>
-                    <dialog id="plz-popup" class="plz-popup" style="display:none;z-index:99999;">
+                    <dialog id="plz-popup" class="plz-popup">
                         <div class="plz-popup-content">
                             <form id="plz-form">
                                 <label for="plz-input">Bitte geben Sie die Postleitzahl des Liefergebiets ein:</label>
-                                <input type="text" id="plz-input" name="plz" required>
+                                <input type="text" id="plz-input" name="plz" minlength="5" maxlength="5" title="Bitte geben Sie eine Postleitzahl mit Stellen ein" required>
                                 <button type="submit" class="btn-popup-submit">Speichern</button>
                             </form>
                         </div>
@@ -162,6 +162,10 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                 });
                             }
 
+                            //function to set postleitzahl output
+                            function set_postleitzahl_output(plz) {
+                                jQuery("#plz-output").text("Lieferung zur Postleitzahl: " + plz);
+                            }
 
                             //function to change postleitzahl cookie
                             function change_postleitzahl(plz) {
@@ -184,15 +188,29 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                 }
                                 return plz;
                             }
+                            
+                            jQuery(".btn-popup").click(function() {
+                                jQuery("#plz-popup").fadeIn();
+                                jQuery("#plz-input").val("");
+                                jQuery("#plz-input").focus();
+                            });
 
-                            //function to set postleitzahl output
-                            function set_postleitzahl_output(plz) {
-                                jQuery("#plz-output").text("Lieferung zur Postleitzahl: " + plz);
-                            }
-
+                            jQuery("#plz-form").submit(function(event) {
+                                event.preventDefault();
+                                let plz = jQuery("#plz-input").val();
+                                if (plz !== "") {
+                                    // Update Postleitzahl
+                                    change_postleitzahl(plz);
+                                    
+                                    // Close popup
+                                    jQuery("#plz-popup").fadeOut();
+                                } else {
+                                    alert("Bitte geben Sie eine Postleitzahl ein.");
+                                }
+                            });
 
                             // Check if postleitzahl-cookie has a value
-                            var plz = get_postleitzahl_cookie();
+                            let plz = get_postleitzahl_cookie();
 
                             if (plz === "") {
                                 // If postleitzahl is empty, show popup
@@ -202,38 +220,93 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                 set_postleitzahl_output(plz)
                                 fill_total_cost_overview(plz);
                             }
-                            
-                            // Handle popup and form submission
-                            jQuery(".plz-popup").click(function(event) {
-                                if (event.target === this) {
-                                    var plz = jQuery("#plz-input").val();
-                                    set_postleitzahl_output(plz);
-                                    change_postleitzahl(plz);
-                                    jQuery(this).fadeOut();
-                                }
-                            });
-
-                            jQuery(".btn-popup").click(function() {
-                                jQuery("#plz-popup").fadeIn();
-                                jQuery("#plz-input").val("");
-                                jQuery("#plz-input").focus();
-                            });
-
-                            jQuery("#plz-form").submit(function(event) {
-                                event.preventDefault();
-                                var plz = jQuery("#plz-input").val();
-                                if (plz !== "") {
-                                    // Update Postleitzahl
-                                    change_postleitzahl(plz);
-                                    
-                                    // Close popup
-                                    jQuery("#plz-popup").fadeOut();
-                                } else {
-                                    alert("Bitte gen Sie eine Postleizahl ein.");
-                                }
-                            });
                         });
                     </script>
+                    <style>
+                        .plz-popup {
+                            position: fixed;
+                            top: 0;
+                            left: 0;
+                            width: 100%;
+                            height: 100%;
+                            background-color: rgba(0,0,0,0.5);
+                            display: none;
+                            z-index: 9999;
+                        }
+
+                        .plz-popup .plz-popup-content {
+                            position: absolute;
+                            top: 50%;
+                            left: 50%;
+                            transform: translate(-50%, -50%);
+                            background-color: #fff;
+                            padding: 20px;
+                            border-radius: 5px;
+                            width: 400px;
+                        }
+
+                        .plz-popup .plz-popup-content .plz-popup-header {
+                            font-size: 20px;
+                            font-weight: bold;
+                            margin-bottom: 10px;
+                        }
+
+                        .plz-popup .plz-popup-content .plz-popup-body {
+                            font-size: 16px;
+                            margin-bottom: 10px;
+                        }
+
+                        .plz-popup .plz-popup-content .plz-popup-footer {
+                            text-align: right;
+                        }
+
+                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup {
+                            background-color: #fff;
+                            border: 1px solid #000;
+                            padding: 5px 10px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                        }
+
+                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:hover {
+                            background-color: #000;
+                            color: #fff;
+                        }
+
+                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:active {
+                            background-color: #fff;
+                            color: #000;
+                        }
+
+                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:focus {
+                            outline: none;
+                        }
+
+                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:disabled {
+                            background-color: #fff;
+                            color: #000;
+                            cursor: not-allowed;
+                        }
+
+                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:disabled:hover {
+                            background-color: #fff;
+                            color: #000;
+                        }
+
+                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:disabled:active {
+                            background-color: #fff;
+                            color: #000;
+                        }
+
+                        .btn-popup-submit {
+                            background-color: #fff;
+                            border: 1px solid #000;
+                            padding: 5px 10px;
+                            border-radius: 5px;
+                            cursor: pointer;
+                        }
+
+                    </style>
                 <?php
             }
         }
@@ -245,15 +318,9 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
             $plz = $_POST['plz'];
             try{
                 $shipping_costs = $this->shipping_method->get_shipping_costs($plz);
-
-                //change shipping postcode of user
-                $woocommerce = WC();
-                $woocommerce->customer->set_shipping_postcode($plz);
-                $woocommerce->customer->set_shipping_city("Berlin"); // mit API ersetzen
-                //$woocommerce->customer->set_shipping_state("NRW"); -> herausfinden wie
-                $woocommerce->customer->set_shipping_country("DE");
-                $woocommerce->customer->save();
-
+                
+                $this->change_customer_info_by_plz($plz);
+                
                 $ret = array(
                     'status' => "success",
                     'shipping_costs' => $shipping_costs
@@ -267,6 +334,24 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
 
             echo json_encode($ret);
             wp_die();
+        }
+
+        /**
+         * Change shipping information of user
+         */
+        function change_customer_info_by_plz($plz){
+            //change shipping information of user
+            GLOBAL $woocommerce;
+            $woocommerce->customer->set_shipping_postcode($plz);
+            $woocommerce->customer->set_shipping_country("DE");
+
+            try{
+                $info = $this->shipping_method->get_plz_info($plz);
+                $woocommerce->customer->set_shipping_city($info['placeName']);
+                $woocommerce->customer->set_shipping_state("DE-".$info['adminCode1']);
+            }catch(Exception $e){/* do nothing*/}
+
+            $woocommerce->customer->save();
         }
     }
 

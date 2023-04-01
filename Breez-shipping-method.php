@@ -42,6 +42,9 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
 
                 // Save settings in admin if you have any defined
                 add_action( 'woocommerce_update_options_shipping_' . $this->id, array( $this, 'process_admin_options' ) );
+                add_action( 'woocommerce_review_order_before_cart_contents', 'validate_order' , 10 );
+                add_action( 'woocommerce_after_checkout_validation', 'validate_order' , 10 );
+            
             }
 
             function init_form_fields(){
@@ -100,6 +103,9 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
                 $plz = $package["destination"]["postcode"];
                 $versandkosten = $this->get_shipping_costs($plz);
 
+                // set cookie
+                setcookie("plz", $plz, time() + (86400 * 30), "/");
+
                 $rate = array(
                     'id'    => $this->id,       // ID for the rate
                     'label' => $this->title,    // Label for the rate
@@ -110,19 +116,28 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
 
             /**
              * Validate German zip code with GeoNames API
-             * @License: Creative COmmons Attribution 4.0 License -> https://creativecommons.org/licenses/by/4.0/
-             * -> TODO: Geonames muss mit Link genannt werden (oder man baut es aus)
              * Premium-Lizenzen möglich
              * @param string $plz
              * @return bool
              */
             public function validate_german_zip($plz) {
                 if(!preg_match('/^\d{5}$/',$plz)) return false;
+                $rw = $this->get_plz_info($plz) != null;
+                return $rw;
+            }
+
+            /**
+             * Get city info with GeoNames API
+             * @License: Creative COmmons Attribution 4.0 License -> https://creativecommons.org/licenses/by/4.0/
+             * @param string $plz
+             * @return array
+             */
+            public function get_plz_info($plz) {
+                if(!preg_match('/^\d{5}$/',$plz)) return false;
                 $url = 'http://geonames.org/postalCodeLookupJSON?postalcode='.$plz.'&country=DE';
                 $response = file_get_contents($url);
                 $resp_arr = json_decode($response,true);
-                $rw = isset($resp_arr["postalcodes"]) && count($resp_arr["postalcodes"]) >= 1;
-                return $rw; 
+                return $resp_arr["postalcodes"][0];
             }
 
 
@@ -159,7 +174,7 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
                     $duration = $data->rows[0]->elements[0]->duration->value;
                     return array('distance' => $distance, 'duration' => $duration);
                 } else {
-                    throw new Exception('Es kam zu einem Fehler beim Zugriff auf die Google Maps API');
+                    $this->add_notice('Es kam zu einem Fehler beim Zugriff auf die Google Maps API', 'error');
                 }
             }
     
@@ -182,7 +197,7 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
                     // Calculate shipping costs and return
                     return $this->calculate_shipping_costs($entfernung, $fahrzeit);
                 }else{
-                    throw new Exception('Der eingegebene Wert entspricht keiner deutschen Postleitzahl.');
+                    $this->add_notice('Der eingegebene Wert entspricht keiner belieferbaren deutschen Postleitzahl.', 'error');
                 }
             }
 
@@ -216,7 +231,32 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
                     // round to 2 decimal places and return
                     return round($versandkosten, 2);
                 }
-                throw new Exception('Es sind nicht alle Variablen für die Versandkostenberechnung gesetzt.');
+                $this->add_notice('Es sind nicht alle Variablen für die Versandkostenberechnung gesetzt.', 'error');
+            }
+
+
+            function validate_order($posted){
+                $plz = $posted['shipping_postcode'];
+                if(!$this->validate_german_zip($plz)){
+                    $this->add_notice('Der eingegebene Wert entspricht keiner belieferbaren deutschen Postleitzahl.', 'error');
+                }
+            }
+
+            /**
+             * Add notice to cart or checkout page or else throws an exception
+             * @param string $message
+             * @param string $notice_type
+             * @return void
+             * @throws Exception
+             */
+            function add_notice($message, $notice_type){
+                if(is_checkout() || is_cart()){
+                    if(!wc_has_notice(__($message, 'woocommerce'), $notice_type)){
+                        wc_add_notice(__($message, 'woocommerce'), $notice_type);
+                    }
+                }else{
+                    throw new Exception($message);
+                }
             }
         }
     }
