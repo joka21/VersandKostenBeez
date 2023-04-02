@@ -47,12 +47,15 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
             // Add popup and input field to WooCommerce product page
             add_action( 'woocommerce_single_product_summary', array($this, 'add_popup_input_field'), 30);
 
-            // Add jQuery to footer
+            // Add js to header
             add_action('wp_head', array($this, 'add_popup_jquery'));
+
+            //add custom product css to header
+            add_action('wp_head', array($this, 'add_product_css'));
 
             // Add ajax action to get shipping costs
             add_action('wp_ajax_get_shipping_costs', array($this, 'get_shipping_costs'));
-            add_action('wp_ajax_nopriv_get_shipping_costs', array($this, 'get_shipping_costs'));
+            add_action('wp_ajax_nopriv_get_shipping_costs', array($this, 'get_shipping_costs'));                        
         }
 
         /**
@@ -127,9 +130,10 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                     <script>
                         jQuery(document).ready(function() {
                             // function to fill the total cost overview
-                            function fill_total_cost_overview(plz) {
+                            function fill_total_cost_overview(plz, custom_func = () => {}) {
                                 var post_id = jQuery("#post").val();
-                                jQuery.ajax({
+                                // return a ajax promise
+                                return jQuery.ajax({
                                     url: "<?php echo admin_url('admin-ajax.php') ?>",
                                     type: "POST",
                                     data: {
@@ -150,6 +154,8 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                             jQuery("#single-product-price .price-value .woocommerce-Price-amount.amount").text(product_price.toFixed(2));
                                             jQuery("#shipping-costs .price-value .woocommerce-Price-amount.amount").text(shipping_costs.toFixed(2));
                                             jQuery("#total-costs .price-value .woocommerce-Price-amount.amount").text(total_costs.toFixed(2));
+
+                                            custom_func();
                                         } else {
                                             alert("Error: " + responseObj.message);
                                             jQuery("#plz-popup").show();
@@ -168,7 +174,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                             }
 
                             //function to change postleitzahl cookie
-                            function change_postleitzahl(plz) {
+                            function change_postleitzahl(plz, custom_func = () => {}) {    
                                 fill_total_cost_overview(plz);
                                 set_postleitzahl_output(plz);
                                 document.cookie="plz="+plz+";path=/";
@@ -189,19 +195,27 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                 return plz;
                             }
                             
-                            jQuery(".btn-popup").click(function() {
+                            function open_popup() {
                                 jQuery("#plz-popup").fadeIn();
                                 jQuery("#plz-input").val("");
                                 jQuery("#plz-input").focus();
-                            });
+                            }
+
+                            jQuery(".btn-popup").click(open_popup);
 
                             jQuery("#plz-form").submit(function(event) {
                                 event.preventDefault();
+                                let reload = get_postleitzahl_cookie() === "";
+
                                 let plz = jQuery("#plz-input").val();
                                 if (plz !== "") {
                                     // Update Postleitzahl
-                                    change_postleitzahl(plz);
-                                    
+                                    change_postleitzahl(plz, () => {
+                                        if (reload) {
+                                            location.reload();
+                                        }
+                                    });
+                                
                                     // Close popup
                                     jQuery("#plz-popup").fadeOut();
                                 } else {
@@ -209,105 +223,31 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                 }
                             });
 
-                            // Check if postleitzahl-cookie has a value
-                            let plz = get_postleitzahl_cookie();
+                            function startup(){
+                                // Check if postleitzahl-cookie has a value
+                                let plz = get_postleitzahl_cookie();
 
-                            if (plz === "") {
-                                // If postleitzahl is empty, show popup
-                                jQuery("#plz-popup").fadeIn();
-                            }else{
-                                // If postleitzahl is not empty, get shipping costs
-                                set_postleitzahl_output(plz)
-                                fill_total_cost_overview(plz);
+                                if (plz === "") {
+                                    // If postleitzahl is empty, show popup
+                                    open_popup();
+                                }else{
+                                    // If postleitzahl is not empty, get shipping costs
+                                    set_postleitzahl_output(plz);
+                                    fill_total_cost_overview(plz);
+                                }
                             }
+
+                            startup();
                         });
                     </script>
-                    <style>
-                        .plz-popup {
-                            position: fixed;
-                            top: 0;
-                            left: 0;
-                            width: 100%;
-                            height: 100%;
-                            background-color: rgba(0,0,0,0.5);
-                            display: none;
-                            z-index: 9999;
-                        }
-
-                        .plz-popup .plz-popup-content {
-                            position: absolute;
-                            top: 50%;
-                            left: 50%;
-                            transform: translate(-50%, -50%);
-                            background-color: #fff;
-                            padding: 20px;
-                            border-radius: 5px;
-                            width: 400px;
-                        }
-
-                        .plz-popup .plz-popup-content .plz-popup-header {
-                            font-size: 20px;
-                            font-weight: bold;
-                            margin-bottom: 10px;
-                        }
-
-                        .plz-popup .plz-popup-content .plz-popup-body {
-                            font-size: 16px;
-                            margin-bottom: 10px;
-                        }
-
-                        .plz-popup .plz-popup-content .plz-popup-footer {
-                            text-align: right;
-                        }
-
-                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup {
-                            background-color: #fff;
-                            border: 1px solid #000;
-                            padding: 5px 10px;
-                            border-radius: 5px;
-                            cursor: pointer;
-                        }
-
-                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:hover {
-                            background-color: #000;
-                            color: #fff;
-                        }
-
-                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:active {
-                            background-color: #fff;
-                            color: #000;
-                        }
-
-                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:focus {
-                            outline: none;
-                        }
-
-                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:disabled {
-                            background-color: #fff;
-                            color: #000;
-                            cursor: not-allowed;
-                        }
-
-                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:disabled:hover {
-                            background-color: #fff;
-                            color: #000;
-                        }
-
-                        .plz-popup .plz-popup-content .plz-popup-footer .btn-popup:disabled:active {
-                            background-color: #fff;
-                            color: #000;
-                        }
-
-                        .btn-popup-submit {
-                            background-color: #fff;
-                            border: 1px solid #000;
-                            padding: 5px 10px;
-                            border-radius: 5px;
-                            cursor: pointer;
-                        }
-
-                    </style>
                 <?php
+            }
+        }
+
+        function add_product_css(){
+            if(is_product()){
+                //add css from css/product.css
+                wp_enqueue_style('product', plugin_dir_url(__FILE__) . 'css/product.css');
             }
         }
 
@@ -330,6 +270,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                     'status' => "error",
                     'message' => $e->getMessage()
                 );
+                throw $e;
             }
 
             echo json_encode($ret);

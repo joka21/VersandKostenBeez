@@ -103,8 +103,10 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
                 $plz = $package["destination"]["postcode"];
                 $versandkosten = $this->get_shipping_costs($plz);
 
-                // set cookie
-                setcookie("plz", $plz, time() + (86400 * 30), "/");
+                // set cookie if they're different
+                if($plz !== $_COOKIE["plz"]){
+                    setcookie("plz", $plz, time() + (86400 * 30), "/");
+                }
 
                 $rate = array(
                     'id'    => $this->id,       // ID for the rate
@@ -112,7 +114,7 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
                     'cost'  => $versandkosten,  // Amount for shipping or an array of costs (for per item shipping)
                 );
                 $this->add_rate( $rate );
-            }    
+            }
 
             /**
              * Validate German zip code with GeoNames API
