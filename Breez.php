@@ -55,7 +55,10 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
 
             // Add ajax action to get shipping costs
             add_action('wp_ajax_get_shipping_costs', array($this, 'get_shipping_costs'));
-            add_action('wp_ajax_nopriv_get_shipping_costs', array($this, 'get_shipping_costs'));                        
+            add_action('wp_ajax_nopriv_get_shipping_costs', array($this, 'get_shipping_costs'));         
+            
+            // change customer info by plz on add to cart
+            add_action('woocommerce_add_to_cart', array($this, 'custom_add_to_cart'));
         }
 
         /**
@@ -119,7 +122,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
             }
         }
 
-
         /**
          * Add jQuery to footer of product page
          */
@@ -130,7 +132,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                     <script>
                         jQuery(document).ready(function() {
                             // function to fill the total cost overview
-                            function fill_total_cost_overview(plz, custom_func = () => {}) {
+                            function fill_total_cost_overview(plz) {
                                 var post_id = jQuery("#post").val();
                                 // return a ajax promise
                                 return jQuery.ajax({
@@ -154,8 +156,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                             jQuery("#single-product-price .price-value .woocommerce-Price-amount.amount").text(product_price.toFixed(2));
                                             jQuery("#shipping-costs .price-value .woocommerce-Price-amount.amount").text(shipping_costs.toFixed(2));
                                             jQuery("#total-costs .price-value .woocommerce-Price-amount.amount").text(total_costs.toFixed(2));
-
-                                            custom_func();
                                         } else {
                                             alert("Error: " + responseObj.message);
                                             jQuery("#plz-popup").show();
@@ -174,7 +174,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                             }
 
                             //function to change postleitzahl cookie
-                            function change_postleitzahl(plz, custom_func = () => {}) {    
+                            function change_postleitzahl(plz) {    
                                 fill_total_cost_overview(plz);
                                 set_postleitzahl_output(plz);
                                 document.cookie="plz="+plz+";path=/";
@@ -210,11 +210,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                 let plz = jQuery("#plz-input").val();
                                 if (plz !== "") {
                                     // Update Postleitzahl
-                                    change_postleitzahl(plz, () => {
-                                        if (reload) {
-                                            location.reload();
-                                        }
-                                    });
+                                    change_postleitzahl(plz);
                                 
                                     // Close popup
                                     jQuery("#plz-popup").fadeOut();
@@ -270,7 +266,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                     'status' => "error",
                     'message' => $e->getMessage()
                 );
-                throw $e;
             }
 
             echo json_encode($ret);
@@ -294,6 +289,15 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
 
             $woocommerce->customer->save();
         }
+        
+        /**
+         * Change customer info by plz on add to cart
+         */
+        function custom_add_to_cart(){
+            $plz = $_COOKIE['plz'] ?? "";
+            $this->change_customer_info_by_plz($plz);
+        }
+
     }
 
     $Versand_Kosten_Beez_Plugin = new Versand_Kosten_Beez_Plugin( __FILE__ );
