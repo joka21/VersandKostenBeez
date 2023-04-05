@@ -69,13 +69,55 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                 $plz = $_COOKIE['plz'] ?? "";
 
                 //Add text with current postleitzahl saved in cookie
-                echo '<p id="plz-output">Postleitzahl: ' . $plz . '</p>';
-
-                // Add button to open popup
-                echo '<button type="button" class="btn-popup">Postleitzahl ändern</button>';
-                
-                // Add popup and input field
+                // Add button to open popup, popup and input field
                 ?>
+                    <div id="shipping-informations-product">
+                        <div>
+                            <span id="plz-output">Postleitzahl: <? echo htmlspecialchars($plz); ?></span>
+                            <button type="button" class="btn-popup">Postleitzahl ändern</button>
+                        </div>
+
+                        <div id="shipping-informations-week">
+                            <label>Lieferwoche *</label>
+                            <select id="select-lieferwochen">
+                                <option value="">--Bitte auswählen --</option>
+                                <?php
+                                    $current_calendar_week = date("W");
+                                    $lieferwochen = array();
+                                    for($i = 0; $i < 4; $i++) {
+                                        //get start and end date of current calendar week
+                                        $start_date = date("d.m.Y", strtotime("+" . ($i - 1) . " week monday"));
+                                        $end_date = date("d.m.Y", strtotime("+" . $i . " week friday"));
+
+                                        //TODO: Anbindung an Datenbank hinzufügen
+                                        $lieferwochen[] = array(
+                                            "week" => $current_calendar_week + $i, 
+                                            "start" => $start_date,
+                                            "end" => $end_date,
+                                            "enabled" =>  rand(0, 1) == 1 ? true : false
+                                        );
+                                    }
+
+                                    foreach($lieferwochen as $lieferwoche) {
+                                        $week = $lieferwoche["week"];
+                                        $start = $lieferwoche["start"];
+                                        $end = $lieferwoche["end"];
+                                        $enabled = $lieferwoche["enabled"];
+
+                                        echo "<option value='$week'";
+                                        if($enabled) {
+                                            echo ">KW $week ($start - $end)";
+                                        } else {
+                                            echo "disabled>
+                                                KW $week ($start - $end) - ausgebucht!";
+                                        }
+                                        echo "</option>";
+                                    }
+                                ?>
+                            </select>
+                        </div>
+                    </div>
+
                     <dialog id="plz-popup" class="plz-popup">
                         <div class="plz-popup-content">
                             <form id="plz-form">
@@ -87,7 +129,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                     </dialog>
                 
                     <div id="total-cost-overview">
-                        <h2>Preise:</h2>
+                        <span>Preise:</span>
                         <!-- ------------------------------------------------------------ -->
                         <div id="single-product-price">
                             <span id="product-name" class="price-label">placeholder</span>
@@ -107,6 +149,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                 <span class="woocommerce-Price-currencySymbol">€</span>
                             </span>
                         </div>
+                        
                         <!-- ============================================================= -->
                         <div id="total-costs">
                             <span class="price-label">Gesamt:</span>
@@ -162,7 +205,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                         }
                                     },
                                     error: function(xhr, status, error) {
-                                        alert("Error: " + error);
                                         console.log(xhr.responseText);
                                     }
                                 });
@@ -306,8 +348,37 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         return $links;
     }
 
+
 endif; 
 
+
+    /*
+
+    // Hook in
+    add_filter( 'woocommerce_default_address_fields' , 'custom_override_checkout_fields', 50, 1 );
+
+    // Our hooked in function – $fields is passed via the filter!
+    function custom_override_checkout_fields( $fields ) {
+        $fields['billing']['shipping_phone'] = array(
+            'label'     => __('Phone', 'woocommerce'),
+        'placeholder'   => _x('Phone', 'placeholder', 'woocommerce'),
+        'required'  => false,
+        'class'     => array('form-row-wide'),
+        'clear'     => true
+        );
+
+        return $fields;
+    }
+
+    /**
+     * Display field value on the order edit page
+     */
+    /*
+    add_action( 'woocommerce_admin_order_data_after_billing_address', 'my_custom_checkout_field_display_admin_order_meta', 10, 1 );
+
+    function my_custom_checkout_field_display_admin_order_meta($order){
+        echo '<p><strong>'.__('Phone From Checkout Form').':</strong> ' . get_post_meta( $order->get_id(), '_shipping_phone', true ) . '</p>';
+    }*/
 
 
 ?>

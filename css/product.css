@@ -1,3 +1,23 @@
+#shipping-informations-product{
+    display: block;
+    margin:  1vh 1vw 1vh 0;
+}
+
+#plz-output {
+    display: inherit;
+    margin: inherit;
+
+}
+
+#shipping-informations-week{
+    margin:  1vh 1vw 1vh 0;
+}
+
+#select-lieferwochen {
+    border-radius: 4px;
+}
+
+
 .plz-popup {
     position: fixed;
     top: 0;
@@ -35,7 +55,8 @@
     text-align: right;
 }
 
-.plz-popup .plz-popup-content .plz-popup-footer .btn-popup {
+.plz-popup  .plz-popup-content .plz-popup-footer, .btn-popup {
+    margin: inherit;
     background-color: #fff;
     border: 1px solid #000;
     padding: 5px 10px;
@@ -43,32 +64,32 @@
     cursor: pointer;
 }
 
-.plz-popup .plz-popup-content .plz-popup-footer .btn-popup:hover {
+.plz-popup .plz-popup-content .plz-popup-footer, .btn-popup:hover {
     background-color: #000;
     color: #fff;
 }
 
-.plz-popup .plz-popup-content .plz-popup-footer .btn-popup:active {
+.plz-popup .plz-popup-content .plz-popup-footer, .btn-popup:active {
     background-color: #fff;
     color: #000;
 }
 
-.plz-popup .plz-popup-content .plz-popup-footer .btn-popup:focus {
+.plz-popup .plz-popup-content .plz-popup-footer, .btn-popup:focus {
     outline: none;
 }
 
-.plz-popup .plz-popup-content .plz-popup-footer .btn-popup:disabled {
+.plz-popup .plz-popup-content .plz-popup-footer, .btn-popup:disabled {
     background-color: #fff;
     color: #000;
     cursor: not-allowed;
 }
 
-.plz-popup .plz-popup-content .plz-popup-footer .btn-popup:disabled:hover {
+.plz-popup .plz-popup-content .plz-popup-footer, .btn-popup:disabled:hover {
     background-color: #fff;
     color: #000;
 }
 
-.plz-popup .plz-popup-content .plz-popup-footer .btn-popup:disabled:active {
+.plz-popup .plz-popup-content .plz-popup-footer, .btn-popup:disabled:active {
     background-color: #fff;
     color: #000;
 }
@@ -80,3 +101,27 @@
     border-radius: 5px;
     cursor: pointer;
 }
+
+.btn-popup-submit:hover {
+    background-color: #000;
+    color: #fff;
+}
+
+.btn-popup-submit:active {
+    background-color: #fff;
+    color: #000;
+}
+
+.btn-popup-submit:focus {
+    outline: none;
+}
+
+
+
+#total-cost-overview {
+    border:#5c3727 2px solid;
+    border-radius: 10px;
+    padding: 5px;
+}
+
+

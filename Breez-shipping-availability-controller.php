@@ -20,7 +20,7 @@
                         CREATE TABLE IF NOT EXISTS $this->table_name_capacity (
                         calender_week int(2) NOT NULL UNIQUE,
                         year int(4) NOT NULL,
-                        availability int(1) NOT NULL,
+                        availability int(1) NOT NULL DEFAULT 0,
                         PRIMARY KEY (calender_week, year);
 
                         CREATE TABLE IF NOT EXISTS $this->table_name_takenavailability (
@@ -73,7 +73,7 @@
                 }
 
                 public function decrease_availabilty($calender_week, $year, $order_id){
-                    check_availabilty($calender_week, $year);
+                    $this->check_availabilty($calender_week, $year);
                     $sql = "INSERT INTO $this->table_name_takenavailability (calender_week, year, order_id) VALUES ($calender_week, $year, $order_id)";
                     $this->wpdb->query($sql);
                 }

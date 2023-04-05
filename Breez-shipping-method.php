@@ -42,8 +42,9 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
 
                 // Save settings in admin if you have any defined
                 add_action( 'woocommerce_update_options_shipping_' . $this->id, array( $this, 'process_admin_options' ) );
-                add_action( 'woocommerce_review_order_before_cart_contents', 'validate_order' , 10 );
-                add_action( 'woocommerce_after_checkout_validation', 'validate_order' , 10 );
+                add_action( 'woocommerce_review_order_before_cart_contents', array( $this,'validate_order') , 10 );
+                add_action( 'woocommerce_after_checkout_validation', array( $this, 'validate_order') , 10 );
+
             
             }
 
@@ -98,6 +99,7 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
                     ),
                 );
             }
+
 
             public function calculate_shipping( $package = array()){
                 $plz = $package["destination"]["postcode"];
@@ -260,6 +262,8 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
                     throw new Exception($message);
                 }
             }
+
+
         }
     }
     
@@ -270,5 +274,37 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
 
     // Register the shipping method
     add_filter( 'woocommerce_shipping_methods', 'add_shipping_method');
+
+
+    /*
+
+    // add custom field to cart shipping inputs
+    add_filter('woocommerce_checkout_fields',  'add_custom_shipping_fields', 10, 1);
+
+    function add_custom_shipping_fields($fields){
+        $fields['shipping']['kalenderwoche'] = array(
+            'label' => __('Kalenderwoche', 'woocommerce'),
+            'label_class' => 'form-row-wide',
+            'required' => true,
+            'placeholder' => _x('Kalenderwoche', 'A', 'woocommerce'),
+            'class' => array('form-row-wide'),
+            'clear' => false,
+            'type' => 'select',
+            'options' => array(
+                'A' => 'A',
+                'B' => 'B',
+            ),
+        );
+        return $fields;
+    }
+
+    add_action( 'woocommerce_admin_order_data_after_shipping_address', 'my_custom_checkout_field_display_admin_order_meta', 10, 1 );
+
+    function my_custom_checkout_field_display_admin_order_meta($order){
+        echo '<p><strong>'.__('Kalenderwoche From Checkout Form').':</strong> ' . get_post_meta( $order->get_id(), '_kalenderwoche', true ) . '</p>';
+    }
+*/
+
+
 }
 ?>
