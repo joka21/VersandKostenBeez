@@ -14,10 +14,15 @@
  * Text Domain:       my-basics-plugin
  */
 
+require_once('Versandkosten_Beez_Checkout_Block.php');
+require_once('Breez-shipping-availability-controller.php');
 
 // Include the main Versand_Kosten_Beez_Plugin class.
 if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
     class Versand_Kosten_Beez_Plugin {
+        private Versand_Kosten_Beez_Shipping_Method $shipping_method;
+        private Breez_shipping_availability_controller $shipping_availability_controller;
+
         /**
          * Construct the plugin
          */
@@ -37,6 +42,9 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
 
             // Init shipping method
             $this->shipping_method = new Versand_Kosten_Beez_Shipping_Method();
+
+            // Init shipping availability controller
+            $this->shipping_availability_controller = Breez_shipping_availability_controller::getInstance();
 
             // Set the plugin slug
             define( 'VERSAND_KOSTEN_BEEZ_SLUG', 'wc-settings' );
@@ -59,6 +67,11 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
             
             // change customer info by plz on add to cart
             add_action('woocommerce_add_to_cart', array($this, 'custom_add_to_cart'));
+
+            // add lieferwoche to cart item
+            add_filter('woocommerce_add_cart_item_data', array($this, 'custom_add_cart_item_data'), 10, 3 );
+            add_filter( 'woocommerce_get_item_data', array($this, 'custom_get_item_data'), 10, 2 );
+            add_action( 'woocommerce_checkout_create_order_line_item', array($this, 'custom_create_order_line_item'), 10, 4 );
         }
 
         /**
@@ -77,45 +90,9 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                             <button type="button" class="btn-popup">Postleitzahl ändern</button>
                         </div>
 
-                        <div id="shipping-informations-week">
-                            <label>Lieferwoche *</label>
-                            <select id="select-lieferwochen">
-                                <option value="">--Bitte auswählen --</option>
-                                <?php
-                                    $current_calendar_week = date("W");
-                                    $lieferwochen = array();
-                                    for($i = 0; $i < 4; $i++) {
-                                        //get start and end date of current calendar week
-                                        $start_date = date("d.m.Y", strtotime("+" . ($i - 1) . " week monday"));
-                                        $end_date = date("d.m.Y", strtotime("+" . $i . " week friday"));
-
-                                        //TODO: Anbindung an Datenbank hinzufügen
-                                        $lieferwochen[] = array(
-                                            "week" => $current_calendar_week + $i, 
-                                            "start" => $start_date,
-                                            "end" => $end_date,
-                                            "enabled" =>  rand(0, 1) == 1 ? true : false
-                                        );
-                                    }
-
-                                    foreach($lieferwochen as $lieferwoche) {
-                                        $week = $lieferwoche["week"];
-                                        $start = $lieferwoche["start"];
-                                        $end = $lieferwoche["end"];
-                                        $enabled = $lieferwoche["enabled"];
-
-                                        echo "<option value='$week'";
-                                        if($enabled) {
-                                            echo ">KW $week ($start - $end)";
-                                        } else {
-                                            echo "disabled>
-                                                KW $week ($start - $end) - ausgebucht!";
-                                        }
-                                        echo "</option>";
-                                    }
-                                ?>
-                            </select>
-                        </div>
+                        <?
+                            Versand_Kosten_Beez_Shipping_Week_Selection::getInstance()->add_shipping_week_selection();
+                        ?>
                     </div>
 
                     <dialog id="plz-popup" class="plz-popup">
@@ -174,6 +151,16 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                 ?>
                     <script>
                         jQuery(document).ready(function() {
+                            // create hidden input for lieferwoche and lieferjahr
+                            jQuery(".cart").append('<input type="hidden" name="lieferwoche" id="lieferwoche-input-hidden">');
+                            jQuery(".cart").append('<input type="hidden" name="lieferjahr" id="lieferjahr-input-hidden">');
+
+                            // fill hidden input with value of selected shipping week and year
+                            jQuery("#select-lieferwochen").change(function() {
+                                jQuery("#lieferwoche-input-hidden").val(jQuery(this).val());
+                                jQuery("#lieferjahr-input-hidden").val(jQuery(this).find(":selected").data("year"));
+                            });
+
                             // function to fill the total cost overview
                             function fill_total_cost_overview(plz) {
                                 var post_id = jQuery("#post").val();
@@ -189,7 +176,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
                                     success: function(response) {
                                         var responseObj = JSON.parse(response);
 
-                                        if(responseObj.status == "success") {
+                                        if(responseObj.status === "success") {
                                             var product_name = "<?php echo wc_get_product()->get_name() ?>";
                                             var product_price = parseFloat("<?php echo wc_get_product()->get_price()?>", 2)
                                             var shipping_costs = parseFloat(responseObj.shipping_costs, 2);
@@ -247,8 +234,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
 
                             jQuery("#plz-form").submit(function(event) {
                                 event.preventDefault();
-                                let reload = get_postleitzahl_cookie() === "";
-
                                 let plz = jQuery("#plz-input").val();
                                 if (plz !== "") {
                                     // Update Postleitzahl
@@ -335,9 +320,79 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         /**
          * Change customer info by plz on add to cart
          */
-        function custom_add_to_cart(){
+        function custom_add_to_cart() {
             $plz = $_COOKIE['plz'] ?? "";
             $this->change_customer_info_by_plz($plz);
+        }
+
+        /**
+         * Add shipping week information to cart item
+         */
+        function custom_add_cart_item_data( $cart_item_data, $product_id, $variation_id ) {
+            $lieferwoche = $_POST['lieferwoche'] ?? "";
+            $lieferjahr = $_POST['lieferjahr'] ?? "";
+            if($lieferwoche !== "" && $lieferjahr !== "" && $this->shipping_availability_controller->is_available($lieferwoche, $lieferjahr)){
+                //change cart data of item with lieferwoche
+                $cart_item_data['lieferwoche'] = array(
+                    'woche' =>$lieferwoche,
+                    'jahr' => $lieferjahr
+                );
+            }else{
+                throw new Exception("Die ausgewählte Lieferwoche ist nicht verfügbar.");
+            }
+            return $cart_item_data;
+        }
+
+        /**
+         * Show shipping week information in cart and checkout
+         */
+        function custom_get_item_data( $item_data, $cart_item_data ) {
+            if( isset( $cart_item_data['lieferwoche'] ) ) {
+                $week = $cart_item_data['lieferwoche']['woche'];
+                $year = $cart_item_data['lieferwoche']['jahr'];
+
+                $lieferwochen_info = $this->shipping_method->get_lieferwochen_info($week, $year);
+                $start = $lieferwochen_info['start'];
+                $end = $lieferwochen_info['end'];
+                $enabled = $lieferwochen_info['enabled'];
+
+                if($enabled) {
+                    $item_data[] = array(
+                        'key' => __('Lieferwoche', 'versandkosten-beez'),
+                        'value' => wc_clean("KW $week ($start - $end)")
+                    );
+                }else{
+                    $item_data[] = array(
+                        'key' => __('Fehler', 'versandkosten-beez'),
+                        'value' => "Die Lieferung in der KW $week ($start - $end) ist nicht verfügbar. Bitte entfernen Sie das Produkt aus dem Warenkorb."
+                    );
+                }
+                return $item_data;
+            }
+            $this->shipping_method->add_notice("Ein Fehler ist bei der Verarbeitung der Lieferwoche augetreten.", "error");
+        }
+
+        function custom_create_order_line_item( $item, $cart_item_key, $values, $order ) {
+            if( isset( $values['lieferwoche'] ) ) {
+                $week = $values['lieferwoche']['woche'];
+                $year = $values['lieferwoche']['jahr'];
+
+                $lieferwochen_info = $this->shipping_method->get_lieferwochen_info($week, $year);
+                $start = $lieferwochen_info['start'];
+                $end = $lieferwochen_info['end'];
+
+                if(!$lieferwochen_info['enabled']) {
+                    $this->shipping_method->add_notice("Die Lieferung in der KW $week ($start - $end) ist nicht verfügbar. Bitte entfernen Sie die betroffenen Produkte aus dem Warenkorb.", "error");
+                    //throw new Exception("Die Lieferung in der KW $week ($start - $end) ist nicht verfügbar. Bitte entfernen Sie die betroffenen Produkte aus dem Warenkorb.");
+                }
+
+                $item->add_meta_data(
+                    __( 'Lieferwoche', 'versandkosten-beez' ),
+                    wc_clean("KW $week ($start - $end)"),
+                    true
+                );
+
+            }
         }
 
     }
@@ -349,36 +404,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
     }
 
 
-endif; 
-
-
-    /*
-
-    // Hook in
-    add_filter( 'woocommerce_default_address_fields' , 'custom_override_checkout_fields', 50, 1 );
-
-    // Our hooked in function – $fields is passed via the filter!
-    function custom_override_checkout_fields( $fields ) {
-        $fields['billing']['shipping_phone'] = array(
-            'label'     => __('Phone', 'woocommerce'),
-        'placeholder'   => _x('Phone', 'placeholder', 'woocommerce'),
-        'required'  => false,
-        'class'     => array('form-row-wide'),
-        'clear'     => true
-        );
-
-        return $fields;
-    }
-
-    /**
-     * Display field value on the order edit page
-     */
-    /*
-    add_action( 'woocommerce_admin_order_data_after_billing_address', 'my_custom_checkout_field_display_admin_order_meta', 10, 1 );
-
-    function my_custom_checkout_field_display_admin_order_meta($order){
-        echo '<p><strong>'.__('Phone From Checkout Form').':</strong> ' . get_post_meta( $order->get_id(), '_shipping_phone', true ) . '</p>';
-    }*/
-
+endif;
 
 ?>

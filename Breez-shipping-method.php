@@ -14,7 +14,10 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
             private float $beentladen;
             private int $origin_plz;
 
-            public function __construct(){                   
+            private Breez_shipping_availability_controller $breez_shipping_availability_controller;
+
+
+            public function __construct(){
                 $this->tax_status           = "none";
                 $this->availability         = 'including';
                 $this->countries            = array('DE');
@@ -23,10 +26,12 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
             }
 
             function init(){
+                //Load database connection
+                $this->breez_shipping_availability_controller = Breez_shipping_availability_controller::getInstance();
+
                 //Load the settings API
                 $this->init_form_fields();  // This is part of the settings API. Override the method to add your own settings
                 $this->init_settings();     // This is part of the settings API. Loads settings you previously init.
-
 
                 // Define user set variables.
                 $this->spritpreis           = doubleval($this->get_option( 'spritpreis' ));
@@ -42,10 +47,12 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
 
                 // Save settings in admin if you have any defined
                 add_action( 'woocommerce_update_options_shipping_' . $this->id, array( $this, 'process_admin_options' ) );
-                add_action( 'woocommerce_review_order_before_cart_contents', array( $this,'validate_order') , 10 );
-                add_action( 'woocommerce_after_checkout_validation', array( $this, 'validate_order') , 10 );
+                add_action( 'woocommerce_review_order_before_cart_contents', array( $this,'validate_order') );
+                add_action( 'woocommerce_after_checkout_validation', array( $this, 'validate_order'));
 
-            
+                // process checkout hook
+                add_action( 'woocommerce_checkout_process', array( $this, 'checkout_order'));
+
             }
 
             function init_form_fields(){
@@ -110,12 +117,25 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
                     setcookie("plz", $plz, time() + (86400 * 30), "/");
                 }
 
-                $rate = array(
-                    'id'    => $this->id,       // ID for the rate
-                    'label' => $this->title,    // Label for the rate
-                    'cost'  => $versandkosten,  // Amount for shipping or an array of costs (for per item shipping)
-                );
-                $this->add_rate( $rate );
+                //get distinct lieferwoche from cart items
+                $lieferwochen = array();
+                //get lieferwoche from cart item data
+                foreach ( WC()->cart->get_cart_contents() as $cart_item ) {
+                    $lieferwochen[] = $cart_item["lieferwoche"]['woche'];
+                }
+
+                $lieferwochen = array_unique($lieferwochen);
+
+                $versandkosten *= count($lieferwochen);
+
+                foreach($lieferwochen as $lieferwoche){
+                    $rate = array(
+                        'id'    => $this->id,       // ID for the rate
+                        'label' => $this->title,    // Label for the rate
+                        'cost'  => $versandkosten,  // Amount for shipping or an array of costs (for per item shipping)
+                    );
+                    $this->add_rate( $rate );
+                }
             }
 
             /**
@@ -134,7 +154,7 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
              * Get city info with GeoNames API
              * @License: Creative COmmons Attribution 4.0 License -> https://creativecommons.org/licenses/by/4.0/
              * @param string $plz
-             * @return array
+             * @return array | bool
              */
             public function get_plz_info($plz) {
                 if(!preg_match('/^\d{5}$/',$plz)) return false;
@@ -214,8 +234,7 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
              */
             private function calculate_shipping_costs($entfernung, $fahrzeit){
                 if(isset($entfernung) && isset($fahrzeit) && $entfernung !== null && $fahrzeit !== null &&
-                    isset($this->spritpreis) && isset($this->spritverbrauch) && isset($this->lohnkosten) && isset($this->wartungskosten) && isset($this->beentladen) &&
-                    $this->spritpreis !== null && $this->spritverbrauch !== null && $this->lohnkosten !== null && $this->wartungskosten !== null && $this->beentladen !== null
+                    isset($this->spritpreis) && isset($this->spritverbrauch) && isset($this->lohnkosten) && isset($this->wartungskosten) && isset($this->beentladen)
                 ){
                     // Convert all values to double
                     $entfernung = doubleval($entfernung);
@@ -240,9 +259,41 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
 
 
             function validate_order($posted){
+                GLOBAL $woocommerce;
                 $plz = $posted['shipping_postcode'];
                 if(!$this->validate_german_zip($plz)){
                     $this->add_notice('Der eingegebene Wert entspricht keiner belieferbaren deutschen Postleitzahl.', 'error');
+                }
+
+                //check if all products have a lieferwoche attribute
+                foreach ( $woocommerce->cart->get_cart_contents() as $cart_item ) {
+                    $lieferwoche = $cart_item["lieferwoche"];
+                    if(!$this->breez_shipping_availability_controller->is_available($lieferwoche['woche'], $lieferwoche['jahr'])){
+                        $this->add_notice('Bitte wählen Sie auf der Produktseite eine Lieferwoche aus.', 'error');
+                    }
+                }
+            }
+
+            function checkout_order($order_id){
+                $order = new WC_Order($order_id);
+
+                //get distinct lieferwoche from cart items
+                $lieferwochen = array();
+                //get lieferwoche from cart item data
+                foreach ( $order->get_items() as $cart_item ) {
+                    $lieferwochen[] = $cart_item["lieferwoche"]['woche'];
+                }
+                $lieferwochen = array_unique($lieferwochen);
+
+                foreach($lieferwochen as $lieferwoche){
+                    if(!$this->breez_shipping_availability_controller->is_available($lieferwoche['woche'], $lieferwoche['jahr'])){
+                        $this->add_notice('Bitte wählen Sie auf der Produktseite eine Lieferwoche aus.', 'error');
+                        return;
+                    }
+                }
+
+                foreach($lieferwochen as $lieferwoche){
+                    $this->breez_shipping_availability_controller->decrease_availabilty($lieferwoche['woche'], $lieferwoche['jahr'], $order_id);
                 }
             }
 
@@ -263,9 +314,34 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
                 }
             }
 
+            public function get_lieferwochen(){
+                $lieferwochen = array();
+                for($i = 0; $i < 4; $i++) {
+                    $current_calendar_week = date("W", strtotime("+" . $i . " week monday"));
+                    $current_calendar_year = date("Y", strtotime("+" . $i . " week monday"));
 
+                    $lieferwochen[] = $this->get_lieferwochen_info($current_calendar_week, $current_calendar_year);
+                }
+                return $lieferwochen;
+            }
+
+            public function get_lieferwochen_info($week, $year){
+                $start_date = date("d.m.Y", strtotime("+" . ($week - 1) . " week monday"));
+                $end_date = date("d.m.Y", strtotime("+" . $week . " week friday"));
+
+                return array(
+                    "week" => $week,
+                    "year" => $year,
+                    "start" => $start_date,
+                    "end" => $end_date,
+                    "enabled" => $this->breez_shipping_availability_controller->is_available($week, date("Y"))
+                );
+
+            }
         }
     }
+}
+
     
     function add_shipping_method( $methods ){
         $methods[] = 'Versand_Kosten_Beez_Shipping_Method';
@@ -275,36 +351,4 @@ if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', g
     // Register the shipping method
     add_filter( 'woocommerce_shipping_methods', 'add_shipping_method');
 
-
-    /*
-
-    // add custom field to cart shipping inputs
-    add_filter('woocommerce_checkout_fields',  'add_custom_shipping_fields', 10, 1);
-
-    function add_custom_shipping_fields($fields){
-        $fields['shipping']['kalenderwoche'] = array(
-            'label' => __('Kalenderwoche', 'woocommerce'),
-            'label_class' => 'form-row-wide',
-            'required' => true,
-            'placeholder' => _x('Kalenderwoche', 'A', 'woocommerce'),
-            'class' => array('form-row-wide'),
-            'clear' => false,
-            'type' => 'select',
-            'options' => array(
-                'A' => 'A',
-                'B' => 'B',
-            ),
-        );
-        return $fields;
-    }
-
-    add_action( 'woocommerce_admin_order_data_after_shipping_address', 'my_custom_checkout_field_display_admin_order_meta', 10, 1 );
-
-    function my_custom_checkout_field_display_admin_order_meta($order){
-        echo '<p><strong>'.__('Kalenderwoche From Checkout Form').':</strong> ' . get_post_meta( $order->get_id(), '_kalenderwoche', true ) . '</p>';
-    }
-*/
-
-
-}
 ?>

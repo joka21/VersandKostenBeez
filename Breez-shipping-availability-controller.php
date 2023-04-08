@@ -5,8 +5,17 @@
                 private $table_name_capacity;
                 private $table_name_takenavailability;
                 private $wpdb;
+
+                private static ?Breez_shipping_availability_controller $instance = null;
+
+                public static function getInstance(){
+                    if(self::$instance == null){
+                        self::$instance = new Breez_shipping_availability_controller();
+                    }
+                    return self::$instance;
+                }
                 
-                public function __construct(){
+                private function __construct(){
                     //create database connection with wordpress
                     global $wpdb;
                     $this->wpdb = $wpdb;
@@ -15,71 +24,93 @@
                     $this->create_table();
                 }
 
-                public function create_table(){
+                private function drop_table($name){
                     $sql = "
-                        CREATE TABLE IF NOT EXISTS $this->table_name_capacity (
-                        calender_week int(2) NOT NULL UNIQUE,
-                        year int(4) NOT NULL,
-                        availability int(1) NOT NULL DEFAULT 0,
-                        PRIMARY KEY (calender_week, year);
-
-                        CREATE TABLE IF NOT EXISTS $this->table_name_takenavailability (
-                            calender_week int(2) NOT NULL,
-                            year int(4) NOT NULL,
-                            order_id int(11) NOT NULL,
-                            PRIMARY KEY (calender_week, year, order_id)
-                            FOREIGN KEY (calender_week, year) REFERENCES $this->table_name_capacity(calender_week, year)
-                            ON DELETE CASCADE
-                            CHECK (
-
-                                SELECT availability FROM $this->table_name_capacity 
-                                WHERE calender_week = $this->table_name_takenavailability.calender_week and
-                                year = $this->table_name_takenavailability.year) 
-                                
-                                >
-
-                                (SELECT count(*) FROM $this->table_name_takenavailability
-                                WHERE calender_week = $this->table_name_takenavailability.calender_week and
-                                year = $this->table_name_takenavailability.year
-                        );
+                        DROP TABLE IF EXISTS $name;
                     ";
                     $this->wpdb->query($sql);
                 }
 
-                public function set_availabilty($calender_week, $year, $availability){
-                    $sql = "INSERT INTO $this->table_name_capacity (calender_week, year, availability) VALUES ($calender_week, $year, $availability) ON DUPLICATE KEY UPDATE availability = $availability";
-                    $this->wpdb->query($sql);
+                public function create_table(){
+                    $this->drop_table($this->table_name_takenavailability);
+                    $this->drop_table($this->table_name_capacity );
+
+                    $sql1 = "                        
+                        CREATE TABLE IF NOT EXISTS $this->table_name_capacity (
+                            calendar_week int(2) NOT NULL UNIQUE,
+                            year int(4) NOT NULL,
+                            availability int(1) NOT NULL DEFAULT 0,
+                            PRIMARY KEY (calendar_week, year)
+                        );";
+
+                    $this->wpdb->query($sql1);
+
+                    $sql2 = "
+                        CREATE TABLE IF NOT EXISTS $this->table_name_takenavailability (
+                            calendar_week int(2) NOT NULL,
+                            year int(4) NOT NULL,
+                            order_id int(11) NOT NULL,
+                            PRIMARY KEY (calendar_week, year, order_id),
+                            FOREIGN KEY (calendar_week, year) REFERENCES $this->table_name_capacity(calendar_week, year)
+                            ON DELETE CASCADE
+                        );
+                    ";
+                    $this->wpdb->query($sql2);
                 }
 
-                public function get_taken_availability($calender_week, $year){
-                    $sql = "SELECT count(*) FROM $this->table_name_takenavailability WHERE calender_week = $calender_week and year = $year";
+                public function set_availabilty($calendar_week, $year, $availability){
+                    $calendar_week = (int)$calendar_week;
+                    $year = (int)$year;
+                    $availability = (int)$availability;
+
+                    $sql = "INSERT INTO $this->table_name_capacity (calendar_week, year, availability) VALUES (%i, %i, %i) ON DUPLICATE KEY UPDATE availability = %i";
+                    $this->wpdb->prepare($sql, $calendar_week, $year, $availability);
+
+                }
+
+                public function get_taken_availability($calendar_week, $year){
+                    $sql = "SELECT count(*) FROM $this->table_name_takenavailability WHERE calendar_week = %i and year = %i";
+                    return $this->wpdb->prepare($sql, $calendar_week, $year)[0];
+                }
+
+                public function get_db_availabilty($calendar_week, $year){
+                    $sql = "SELECT availability FROM $this->table_name_capacity WHERE calendar_week = $calendar_week and year = $year";
                     return $this->wpdb->get_var($sql);
                 }
 
-                public function get_availabilty($calender_week, $year){
-                    $sql = "SELECT availability FROM $this->table_name_capacity WHERE calender_week = $calender_week and year = $year";
-                    return $this->wpdb->get_var($sql);
-                }
+                public function is_available($calendar_week, $year){
+                    $calendar_week = (int)$calendar_week;
+                    $year = (int)$year;
 
-                public function check_availabilty($calender_week, $year){
+                    /*
                     // get current day info
                     $current_day = date('w');
                     $current_week = date('W');
                     $current_year = date('Y');
 
                     // check if the availability is not 0 and if the week is not in the past and today is not friday or later
-                    return ($this->get_availabilty($calender_week, $year) && $this->get_taken_availability($calender_week, $year)) &&
-                            ($calender_week >= $current_week && $year >= $current_year && $current_day < 5);
+                    return ($this->get_db_availabilty($calendar_week, $year) && $this->get_taken_availability($calendar_week, $year)) &&
+                            ($calendar_week >= $current_week && $year >= $current_year && $current_day < 5);
+                    */
+
+                    return $calendar_week !== 15;
                 }
 
-                public function decrease_availabilty($calender_week, $year, $order_id){
-                    $this->check_availabilty($calender_week, $year);
-                    $sql = "INSERT INTO $this->table_name_takenavailability (calender_week, year, order_id) VALUES ($calender_week, $year, $order_id)";
-                    $this->wpdb->query($sql);
+                public function decrease_availabilty($calendar_week, $year, $order_id){
+                    $calendar_week = (int)$calendar_week;
+                    $year = (int)$year;
+                    $order_id = (int)$order_id;
+
+                    if(!$this->is_available($calendar_week, $year)){
+                        return false;
+                    }
+
+                    $sql = "INSERT INTO $this->table_name_takenavailability (calendar_week, year, order_id) VALUES (%i, %i, %i) ON DUPLICATE KEY UPDATE order_id = %i";
+                    return 0 != $this->wpdb->query($this->wpdb->prepare($sql, array($calendar_week, $year, $order_id)));
                 }
 
-                public function increase_availabilty($calender_week, $year, $order_id){
-                    $sql = "DELETE FROM $this->table_name_takenavailability WHERE calender_week = $calender_week and year = $year and order_id = $order_id";
+                public function increase_availabilty($calendar_week, $year, $order_id){
+                    $sql = "DELETE FROM $this->table_name_takenavailability WHERE calendar_week = $calendar_week and year = $year and order_id = $order_id";
                     $this->wpdb->query($sql);
                 }
             }
