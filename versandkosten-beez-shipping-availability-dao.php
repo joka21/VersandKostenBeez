@@ -19,8 +19,8 @@
                     //create database connection with wordpress
                     global $wpdb;
                     $this->wpdb = $wpdb;
-                    $this->table_name_capacity = $wpdb->prefix . 'breez_shipping_availability_capicity';
-                    $this->table_name_takenavailability = $wpdb->prefix . 'breez_shipping_availability_takenavailability';
+                    $this->table_name_capacity = $wpdb->prefix . 'breez_shipping_capicity';
+                    $this->table_name_takenavailability = $wpdb->prefix . 'breez_shipping_takenavailability';
                     $this->create_table();
                 }
 
@@ -35,65 +35,68 @@
                     //$this->drop_table($this->table_name_takenavailability);
                     //$this->drop_table($this->table_name_capacity );
 
+                    $table_name_capacity = $this->table_name_capacity;
+                    $table_name_takenavailability = $this->table_name_takenavailability;
+
                     $sql_table_capacity = "
-                        CREATE TABLE IF NOT EXISTS $this->table_name_capacity (
+                        CREATE TABLE IF NOT EXISTS $table_name_capacity (
                             calendar_week int(2) NOT NULL,
                             year int(4) NOT NULL,
                             availability int(1) NOT NULL DEFAULT 0,
                             PRIMARY KEY (calendar_week, year)
-                        );";
-
+                        );
+                    ";
                     $this->wpdb->query($sql_table_capacity);
 
                     $sql_table_taken_availability = "
-                        CREATE TABLE IF NOT EXISTS $this->table_name_takenavailability (
+                        CREATE TABLE IF NOT EXISTS $table_name_takenavailability (
                             calendar_week int(2) NOT NULL,
                             year int(4) NOT NULL,
                             order_id int(11) NOT NULL,
                             PRIMARY KEY (calendar_week, year, order_id),
-                            FOREIGN KEY (calendar_week, year) REFERENCES $this->table_name_capacity(calendar_week, year)
+                            FOREIGN KEY (calendar_week, year) REFERENCES $table_name_capacity(calendar_week, year)
                             ON DELETE CASCADE
                         );
                     ";
                     $this->wpdb->query($sql_table_taken_availability);
 
                     //check if trigger doesnot exist
-                    $sql = "SELECT count(*) FROM information_schema.triggers WHERE trigger_name = '$this->table_name_takenavailability"."_trigger'";
-                    $count = (int) $this->wpdb->get_var($sql);
-                    if($count == 0) {
+                    $sql = "SELECT count(*) FROM information_schema.triggers WHERE trigger_name = '${table_name_takenavailability}_trigger';";
+                    $count = (int)$this->wpdb->get_var($sql);
+                    if ($count == 0) {
                         //create a mysql db trigger that rejects decreases in availability if the availability is smaller or equal to the taken availability
                         $sql_trigger = "
-                            CREATE TRIGGER $this->table_name_takenavailability" . "_trigger
-                            BEFORE INSERT ON $this->table_name_takenavailability
-                            FOR EACH ROW
-                            BEGIN
-                                IF (SELECT availability FROM $this->table_name_capacity  WHERE calendar_week = NEW.calendar_week and year = NEW.year) < (SELECT count(*) FROM $this->table_name_takenavailability WHERE calendar_week = NEW.calendar_week and year = NEW.year) THEN
-                                    RESIGNAL;
-                                END IF;
-                            END;
-                        ";
+                        CREATE TRIGGER ${table_name_takenavailability}_trigger
+                        BEFORE INSERT ON $table_name_takenavailability
+                        FOR EACH ROW
+                        BEGIN
+                            IF (SELECT availability FROM $table_name_capacity  WHERE calendar_week = NEW.calendar_week and year = NEW.year) < (SELECT count(*) FROM $table_name_takenavailability WHERE calendar_week = NEW.calendar_week and year = NEW.year) THEN
+                                RESIGNAL;
+                            END IF;
+                        END;
+                    ";
                         $this->wpdb->query($sql_trigger);
                     }
 
 
                     //create a db trigger that rejects decreases in availability on table_name_capacity if the availability is smaller or equal to the taken availability by table_name_takenavailability
 
-                    $sql = "SELECT count(*) FROM information_schema.triggers WHERE trigger_name = '$this->table_name_capacity"."_trigger2'";
-                    $count = (int) $this->wpdb->get_var($sql);
-                    if($count == 0) {
+                    $sql = "SELECT count(*) FROM information_schema.triggers WHERE trigger_name = '${table_name_capacity}_trigger2';";
+                    $count = (int)$this->wpdb->get_var($sql);
+                    if ($count == 0) {
                         //create a mysql db trigger that rejects decreases in availability if the availability is smaller or equal to the taken availability
                         $sql_trigger = "
-                            CREATE TRIGGER $this->table_name_capacity" . "_trigger2
-                            BEFORE UPDATE ON $this->table_name_capacity
-                            FOR EACH ROW
-                            BEGIN
-                                DECLARE taken_availability int(1);
-                                SELECT count(*) INTO taken_availability FROM $this->table_name_takenavailability WHERE calendar_week = NEW.calendar_week and year = NEW.year;
-                                IF NEW.availability < taken_availability THEN
-                                    RESIGNAL;
-                                END IF;
-                            END;
-                        ";
+                        CREATE TRIGGER ${table_name_capacity}_trigger2
+                        BEFORE UPDATE ON $table_name_capacity
+                        FOR EACH ROW
+                        BEGIN
+                            DECLARE taken_availability int(1);
+                            SELECT count(*) INTO taken_availability FROM $table_name_takenavailability WHERE calendar_week = NEW.calendar_week and year = NEW.year;
+                            IF NEW.availability < taken_availability THEN
+                                RESIGNAL;
+                            END IF;
+                        END;
+                    ";
                         $this->wpdb->query($sql_trigger);
                     }
                 }
@@ -130,8 +133,7 @@
 
                     $sql = "INSERT INTO $this->table_name_capacity (calendar_week, year, availability) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE availability = %s";
                     $this->wpdb->query($this->wpdb->prepare($sql, $calendar_week, $year, $availability, $availability));
-                    //return $this->wpdb->last_error === '';
-                    return ($this->wpdb->last_error . " " . $this->wpdb->last_query);
+                    return $this->wpdb->last_error === '';
                 }
 
                 public function get_max_availability($calendar_week, $year){

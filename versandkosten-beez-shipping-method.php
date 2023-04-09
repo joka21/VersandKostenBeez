@@ -270,7 +270,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
 
         function validate_order($posted){
             GLOBAL $woocommerce;
-            $plz = $posted['shipping_postcode'];
+            $plz = $posted['shipping_postcode'] ?? "";
             if(!$this->validate_german_zip($plz)){
                 $this->add_notice('Der eingegebene Wert entspricht keiner belieferbaren deutschen Postleitzahl.', 'error');
             }
@@ -316,6 +316,8 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
          */
         function add_notice($message, $notice_type){
             if(is_checkout() || is_cart()){
+                //make notice dismisible
+                $notice_type = $notice_type . ' dismissible';
                 if(!wc_has_notice(__($message, 'woocommerce'), $notice_type)){
                     wc_add_notice(__($message, 'woocommerce'), $notice_type);
                 }
@@ -424,7 +426,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
         public function add_shipping_week_selection(){
             ?>
             <div id="shipping-informations-week">
-                <label>Lieferwoche *</label>
+                <label for="select-lieferwochen">Lieferwoche *</label>
                 <select id="select-lieferwochen">
                     <option value="">--Bitte auswählen --</option>
                     <?php

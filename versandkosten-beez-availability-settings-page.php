@@ -123,17 +123,6 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
         }
 
         private function loadWeeksTableHtml($year){
-            //TODO: Debug entfernen
-            GLOBAL $wpdb;
-
-            echo $wpdb->db_server_info()."<br>";
-            echo $wpdb->db_version()."<br>";
-            echo $wpdb->get_var("SELECT VERSION() AS version")."<br>";
-            //get flavor
-            echo $wpdb->get_var("SELECT @@version_comment AS comment")."<br>";
-
-            $this->shipping_availability_controller->set_availabilty(15, 2023, 10);
-
             ?>
                 <form action="<?php echo admin_url('admin.php?page=Versandkosten Beez&year='.$year);?>" method="post">
                     <table class="weeks-table">
