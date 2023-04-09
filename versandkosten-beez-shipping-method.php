@@ -13,7 +13,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
         private float $beentladen;
         private int $origin_plz;
 
-        private Breez_shipping_availability_controller $breez_shipping_availability_controller;
+        private VersandkostenBeezAvailabilityDao $breez_shipping_availability_controller;
 
         public function __construct(){
             $this->tax_status           = "none";
@@ -26,7 +26,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
         private static bool $hooks_loaded = false;
         function init(){
             //Load database connection
-            $this->breez_shipping_availability_controller = Breez_shipping_availability_controller::getInstance();
+            $this->breez_shipping_availability_controller = VersandkostenBeezAvailabilityDao::getInstance();
 
             //Load the settings API
             $this->init_form_fields();  // This is part of the settings API. Override the method to add your own settings
@@ -114,10 +114,10 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                     'type'              => 'checkbox',
                 ),
 
-            );
+            );                                                                                                                                                                                        
         }
 
-
+                                                                                      
         public function calculate_shipping( $package = array()){
             $plz = $package["destination"]["postcode"];
             $versandkosten = $this->get_shipping_costs($plz);
@@ -347,7 +347,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 "end" => $end_date,
                 "enabled" => $this->breez_shipping_availability_controller->is_available($week, date("Y"))
             );
-
         }
 
 
@@ -451,33 +450,6 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             </div>
 
             <?php
-            //DB TEST SPACE
-
-            var_dump($this->breez_shipping_availability_controller->set_availabilty(16, 2023, 1));
-            echo "<br>";
-            var_dump($this->breez_shipping_availability_controller->set_availabilty(16, 2024, 2));
-            echo "<br>";
-            var_dump($this->breez_shipping_availability_controller->get_max_availability(16, 2023));
-            echo "<br>";
-            var_dump($this->breez_shipping_availability_controller->get_max_availability(16, 2022));
-            echo "<br>";
-
-            var_dump($this->breez_shipping_availability_controller->is_available(16, 2023));
-            echo "<br>";
-            var_dump($this->breez_shipping_availability_controller->is_available(15, 2023));
-            echo "<br>";
-            var_dump($this->breez_shipping_availability_controller->is_available(14, 2023));
-            echo "<br>";
-
-            var_dump($this->breez_shipping_availability_controller->decrease_availabilty(16, 2023, 1));
-            echo "<br>";
-            var_dump($this->breez_shipping_availability_controller->get_taken_availability(16, 2023));
-            echo "<br>";
-            var_dump($this->breez_shipping_availability_controller->decrease_availabilty(15, 2023, 2));
-            echo "<br>";
-            var_dump($this->breez_shipping_availability_controller->get_taken_availability(15, 2023));
-            echo "<br>";
-
         }
 
     }

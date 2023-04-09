@@ -14,11 +14,13 @@
  * Text Domain:       my-basics-plugin
  */
 
+require_once('versandkosten-beez-availability-settings-page.php');
+
 // Include the main Versand_Kosten_Beez_Plugin class.
 if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
     class Versand_Kosten_Beez_Plugin {
         private Versand_Kosten_Beez_Shipping_Method $shipping_method;
-        private Breez_shipping_availability_controller $shipping_availability_controller;
+        private VersandkostenBeezAvailabilityDao $shipping_availability_controller;
         private versandkosten_beez_product_controller $product_controller;
 
         /**
@@ -32,15 +34,15 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         * Init the plugin
         */
         public function init() {
-            require_once('Breez-shipping-availability-controller.php');
-            require_once('Breez-shipping-method.php');
+            require_once('versandkosten-beez-shipping-availability-dao.php');
+            require_once('versandkosten-beez-shipping-method.php');
             require_once('versandkosten-beez-product-controller.php');
 
             // Init shipping method
             $this->shipping_method = new Versand_Kosten_Beez_Shipping_Method();
 
             // Init shipping availability controller
-            $this->shipping_availability_controller = Breez_shipping_availability_controller::getInstance();
+            $this->shipping_availability_controller = VersandkostenBeezAvailabilityDao::getInstance();
 
             // Init product controller
             $this->product_controller = new versandkosten_beez_product_controller();
@@ -58,6 +60,9 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Plugin' ) ) :
         $links[] = '<a href="'. menu_page_url( VERSAND_KOSTEN_BEEZ_SLUG, false ) .'&tab=shipping&section=versand-kosten-beez-shipping-method">Settings</a>';
         return $links;
     }
+
+    $shipping_availability_settings = new VersandkostenBeezAvailabilitySettingsPage();
+    add_action( 'init', array($shipping_availability_settings, 'init'));
 
 endif;
 

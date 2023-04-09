@@ -1,16 +1,16 @@
 <?php
     if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', get_option( 'active_plugins' ) ) ) ) {
-        if ( ! class_exists( 'Breez_shipping_availability_controller' )){
-            class Breez_shipping_availability_controller{
+        if ( ! class_exists('VersandkostenBeezAvailabilityDao')){
+            class VersandkostenBeezAvailabilityDao{
                 private $table_name_capacity;
                 private $table_name_takenavailability;
                 private $wpdb;
 
-                private static ?Breez_shipping_availability_controller $instance = null;
+                private static ?VersandkostenBeezAvailabilityDao $instance = null;
 
                 public static function getInstance(){
                     if(self::$instance == null){
-                        self::$instance = new Breez_shipping_availability_controller();
+                        self::$instance = new VersandkostenBeezAvailabilityDao();
                     }
                     return self::$instance;
                 }
@@ -72,9 +72,9 @@
                                 END IF;
                             END;
                         ";
+                        $this->wpdb->query($sql_trigger);
                     }
 
-                    $this->wpdb->query($sql_trigger);
 
                     //create a db trigger that rejects decreases in availability on table_name_capacity if the availability is smaller or equal to the taken availability by table_name_takenavailability
 
@@ -94,8 +94,8 @@
                                 END IF;
                             END;
                         ";
+                        $this->wpdb->query($sql_trigger);
                     }
-                    $this->wpdb->query($sql_trigger);
                 }
 
                 /**
@@ -123,20 +123,21 @@
                  * @param $availability
                  * @return bool
                  */
-                public function set_availabilty($calendar_week, $year, $availability){
+                public function set_availabilty($calendar_week, $year, $availability) : bool{
                     $calendar_week = (int)$calendar_week;
                     $year = (int)$year;
                     $availability = (int)$availability;
 
                     $sql = "INSERT INTO $this->table_name_capacity (calendar_week, year, availability) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE availability = %s";
-
-                    return (bool) $this->wpdb->query($this->wpdb->prepare($sql, $calendar_week, $year, $availability, $availability));
+                    $this->wpdb->query($this->wpdb->prepare($sql, $calendar_week, $year, $availability, $availability));
+                    //return $this->wpdb->last_error === '';
+                    return ($this->wpdb->last_error . " " . $this->wpdb->last_query);
                 }
 
                 public function get_max_availability($calendar_week, $year){
                     $this->create_calendar_week_if_not_exists($calendar_week, $year);
 
-                    $sql = "SELECT availability FROM $this->table_name_capacity WHERE %s = $calendar_week and year = %s";
+                    $sql = "SELECT availability FROM $this->table_name_capacity WHERE calendar_week = %s and year = %s";
                     return (int) $this->wpdb->get_var($this->wpdb->prepare($sql, $calendar_week, $year));
                 }
 
@@ -177,7 +178,8 @@
 
                     $sql = "INSERT INTO $this->table_name_takenavailability (calendar_week, year, order_id) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE order_id = %s";
 
-                    return (bool) $this->wpdb->query($this->wpdb->prepare($sql, array($calendar_week, $year, $order_id, $order_id)));
+                    $this->wpdb->query($this->wpdb->prepare($sql, array($calendar_week, $year, $order_id, $order_id)));
+                    return $this->wpdb->last_error === '';
                 }
 
                 public function increase_availabilty($calendar_week, $year, $order_id){
@@ -186,7 +188,8 @@
                     $order_id = (int)$order_id;
 
                     $sql = "DELETE FROM $this->table_name_takenavailability WHERE calendar_week = $calendar_week and year = $year and order_id = $order_id";
-                    return (bool) $this->wpdb->query($this->wpdb->prepare($sql, array($calendar_week, $year, $order_id, $order_id)));
+                    $this->wpdb->query($this->wpdb->prepare($sql, array($calendar_week, $year, $order_id, $order_id)));
+                    return $this->wpdb->last_error === '';
                 }
             }
         }
