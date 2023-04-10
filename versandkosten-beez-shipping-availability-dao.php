@@ -52,10 +52,13 @@
                         CREATE TABLE IF NOT EXISTS $table_name_takenavailability (
                             calendar_week int(2) NOT NULL,
                             year int(4) NOT NULL,
-                            order_id int(11) NOT NULL,
+                            order_id BIGINT UNSIGNED NOT NULL,
                             PRIMARY KEY (calendar_week, year, order_id),
                             FOREIGN KEY (calendar_week, year) REFERENCES $table_name_capacity(calendar_week, year)
+                            ON DELETE CASCADE,
+                            FOREIGN KEY (order_id) REFERENCES {$this->wpdb->prefix}posts(ID)
                             ON DELETE CASCADE
+                            ON UPDATE CASCADE
                         );
                     ";
                     $this->wpdb->query($sql_table_taken_availability);
@@ -154,6 +157,15 @@
                     return (int) $this->wpdb->get_var($this->wpdb->prepare($sql, $calendar_week, $year));
                 }
 
+
+                public function is_order_taking_availability($order_id)
+                {
+                    $sql = "
+                        SELECT count(*) FROM $this->table_name_takenavailability WHERE order_id = %s;
+                    ";
+                    $count = (int)$this->wpdb->get_var($this->wpdb->prepare($sql, $order_id));
+                    return $count > 0;
+                }
 
                 public function is_available($calendar_week, $year){
                     $calendar_week = (int)$calendar_week;
