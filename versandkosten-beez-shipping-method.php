@@ -119,32 +119,34 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
 
                                                                                       
         public function calculate_shipping( $package = array()){
-            $plz = $package["destination"]["postcode"];
-            $versandkosten = $this->get_shipping_costs($plz);
+            if(is_checkout() || is_cart()) {
+                $plz = $package["destination"]["postcode"];
+                $versandkosten = $this->get_shipping_costs($plz);
 
-            // set cookie if they're different
-            if($plz !== $_COOKIE["plz"]){
-                setcookie("plz", $plz, time() + (86400 * 30), "/");
-            }
+                // set cookie if they're different
+                if ($plz !== ($_COOKIE["plz"] ?? '')) {
+                    setcookie("plz", $plz, time() + (86400 * 30), "/");
+                }
 
-            //get distinct lieferwoche from cart items
-            $lieferwochen = array();
-            //get lieferwoche from cart item data
-            foreach ( WC()->cart->get_cart_contents() as $cart_item ) {
-                $lieferwochen[] = $cart_item["lieferwoche"]['woche'];
-            }
+                //get distinct lieferwoche from cart items
+                $lieferwochen = array();
+                //get lieferwoche from cart item data
+                foreach (WC()->cart->get_cart_contents() as $cart_item) {
+                    $lieferwochen[] = $cart_item["lieferwoche"]['woche'];
+                }
 
-            $lieferwochen = array_unique($lieferwochen);
+                $lieferwochen = array_unique($lieferwochen);
 
-            $versandkosten *= count($lieferwochen);
+                $versandkosten *= count($lieferwochen);
 
-            foreach($lieferwochen as $lieferwoche){
-                $rate = array(
-                    'id'    => $this->id,       // ID for the rate
-                    'label' => $this->title,    // Label for the rate
-                    'cost'  => $versandkosten,  // Amount for shipping or an array of costs (for per item shipping)
-                );
-                $this->add_rate( $rate );
+                foreach ($lieferwochen as $lieferwoche) {
+                    $rate = array(
+                        'id' => $this->id,       // ID for the rate
+                        'label' => $this->title,    // Label for the rate
+                        'cost' => $versandkosten,  // Amount for shipping or an array of costs (for per item shipping)
+                    );
+                    $this->add_rate($rate);
+                }
             }
         }
 
