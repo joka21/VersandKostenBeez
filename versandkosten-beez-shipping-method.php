@@ -55,7 +55,8 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 add_action('woocommerce_after_checkout_validation', array($this, 'validate_order'));
 
                 // process checkout hook
-                add_action('woocommerce_checkout_process', array($this, 'checkout_order'));
+                add_action('woocommerce_thankyou', array($this, 'checkout_order'));
+                add_action('woocommerce_order_status_changed',  array($this, 'ckeck_order_status_changed'), 10, 3);
 
                 // add lieferwoche to cart item
                 add_filter('woocommerce_add_cart_item_data', array($this, 'custom_add_cart_item_data'), 10, 3);
@@ -119,34 +120,30 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
 
                                                                                       
         public function calculate_shipping( $package = array()){
-            if(is_checkout() || is_cart()) {
-                $plz = $package["destination"]["postcode"];
-                $versandkosten = $this->get_shipping_costs($plz);
+            $plz = $package["destination"]["postcode"];
+            $versandkosten = $this->get_shipping_costs($plz);
 
-                // set cookie if they're different
-                if ($plz !== ($_COOKIE["plz"] ?? '')) {
-                    setcookie("plz", $plz, time() + (86400 * 30), "/");
-                }
+            // set cookie if they're different
+            if ($plz !== ($_COOKIE["plz"] ?? '')) {
+                setcookie("plz", $plz, time() + (86400 * 30), "/");
+            }
 
-                //get distinct lieferwoche from cart items
-                $lieferwochen = array();
-                //get lieferwoche from cart item data
-                foreach (WC()->cart->get_cart_contents() as $cart_item) {
-                    $lieferwochen[] = $cart_item["lieferwoche"]['woche'];
-                }
+            //get distinct lieferwoche from cart items
+            $lieferwochen = array();
+            //get lieferwoche from cart item data
+            foreach (WC()->cart->get_cart_contents() as $cart_item) {
+                $lieferwochen[] = $cart_item["lieferwoche"]['woche'];
+            }
+            $lieferwochen = array_unique($lieferwochen);
+            $versandkosten *= count($lieferwochen);
 
-                $lieferwochen = array_unique($lieferwochen);
-
-                $versandkosten *= count($lieferwochen);
-
-                foreach ($lieferwochen as $lieferwoche) {
-                    $rate = array(
-                        'id' => $this->id,       // ID for the rate
-                        'label' => $this->title,    // Label for the rate
-                        'cost' => $versandkosten,  // Amount for shipping or an array of costs (for per item shipping)
-                    );
-                    $this->add_rate($rate);
-                }
+            foreach ($lieferwochen as $lieferwoche) {
+                $rate = array(
+                    'id' => $this->id,       // ID for the rate
+                    'label' => $this->title,    // Label for the rate
+                    'cost' => $versandkosten,  // Amount for shipping or an array of costs (for per item shipping)
+                );
+                $this->add_rate($rate);
             }
         }
 
@@ -271,6 +268,9 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
 
 
         function validate_order($posted){
+
+            $this->add_notice("Order: TEst", "warning");
+
             GLOBAL $woocommerce;
             $plz = $posted['shipping_postcode'] ?? "";
             if(!$this->validate_german_zip($plz)){
@@ -281,31 +281,8 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             foreach ( $woocommerce->cart->get_cart_contents() as $cart_item ) {
                 $lieferwoche = $cart_item["lieferwoche"];
                 if(!$this->breez_shipping_availability_controller->is_available($lieferwoche['woche'], $lieferwoche['jahr'])){
-                    $this->add_notice('Bitte wählen Sie auf der Produktseite eine Lieferwoche aus.', 'error');
+                    $this->add_notice('Eine Lieferwoche ist nicht verfügbar. Bitte entfernen Sie das betroffene Produkt.', 'error');
                 }
-            }
-        }
-
-        function checkout_order($order_id){
-            $order = new WC_Order($order_id);
-
-            //get distinct lieferwoche from cart items
-            $lieferwochen = array();
-            //get lieferwoche from cart item data
-            foreach ( $order->get_items() as $cart_item ) {
-                $lieferwochen[] = $cart_item["lieferwoche"]['woche'];
-            }
-            $lieferwochen = array_unique($lieferwochen);
-
-            foreach($lieferwochen as $lieferwoche){
-                if(!$this->breez_shipping_availability_controller->is_available($lieferwoche['woche'], $lieferwoche['jahr'])){
-                    $this->add_notice('Bitte wählen Sie auf der Produktseite eine Lieferwoche aus.', 'error');
-                    return;
-                }
-            }
-
-            foreach($lieferwochen as $lieferwoche){
-                $this->breez_shipping_availability_controller->decrease_availabilty($lieferwoche['woche'], $lieferwoche['jahr'], $order_id);
             }
         }
 
@@ -421,6 +398,52 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                     true
                 );
 
+
+                $existing_meta = $order->get_meta('hidden_lieferwoche');
+                if(!is_array($existing_meta)){
+                    $existing_meta = array();
+                }
+                $existing_meta[] = array('woche' => $week, 'jahr' => $year);
+                $order->add_meta_data('hidden_lieferwoche',
+                    $existing_meta,
+                    true);
+
+            }
+        }
+
+
+        function ckeck_order_status_changed($order_id, $old_status, $new_status){
+            $order = wc_get_order($order_id);
+
+            //Change takencapacity if order is cancelled
+            if($new_status == "cancelled" || $new_status == "failed" || $new_status == "refunded"){
+                $lieferwochen = $order->get_meta('hidden_lieferwoche') ?? array();
+                if(count($lieferwochen) != 0) {
+                    foreach ($lieferwochen as $lieferwoche) {
+                        $this->breez_shipping_availability_controller->increase_availabilty($lieferwoche['woche'], $lieferwoche['jahr'], $order_id);
+                    }
+                }
+            }else{
+                $this->checkout_order($order_id);
+            }
+
+        }
+
+        function checkout_order($order_id){
+            $order = wc_get_order($order_id);
+            $lieferwochen = $order->get_meta('hidden_lieferwoche') ?? array();
+            if(count($lieferwochen) != 0) {
+                // make sure the order was not already processed
+                if($this->breez_shipping_availability_controller->is_order_taking_availability($order_id)){
+                    return;
+                }
+
+                //$lieferwochen = array_unique($lieferwochen);
+                foreach ($lieferwochen as $lieferwoche) {
+                    if(!$this->breez_shipping_availability_controller->decrease_availabilty($lieferwoche['woche'], $lieferwoche['jahr'], $order_id)){
+                        $order->update_status('failed', 'Lieferwoche nicht mehr verfügbar');
+                    };
+                }
             }
         }
 
