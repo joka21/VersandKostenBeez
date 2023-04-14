@@ -1,20 +1,34 @@
 <?php
 
-require_once('versandkosten-beez-shipping-availability-dao.php');
-require_once('versandkosten-beez-lieferwoche.php');
+// Exit if accessed directly
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
+
+
 if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
+
+    // Load needed classes
+    require_once('versandkosten-beez-shipping-availability-dao.php');
+    require_once('versandkosten-beez-lieferwoche.php');
+
     class VersandkostenBeezAvailabilitySettingsPage {
         private VersandkostenBeezAvailabilityDao $shipping_availability_controller;
 
-        private $option_group_output = 'Versandkosten Beez';
-        private $option_group = 'Versandkosten Beez';
-        private $option_name = 'VersandkostenBeezAvailabilitySettingsPage';
+        private string $option_group = VERSANDKOSTEN_BEEZ_SHIPPING_MANAGEMENT_SLUG ?? 'Versandkosten Beez Lieferwochen Management';
+        private string $option_name = 'VersandkostenBeezAvailabilitySettingsPage';
 
 
+        /**
+         * Plugin options page constructor.
+         */
         public function __construct(){
             $this->init();
         }
 
+        /**
+         * Init the plugin options page.
+         */
         public function init(){
             $this->shipping_availability_controller = VersandkostenBeezAvailabilityDao::getInstance();
             add_action( 'admin_init', array($this, 'settings_init' ));
@@ -22,36 +36,15 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
         }
 
         /**
-         * custom option and settings
+         * Register settings
          */
         function settings_init() {
-            // Register a new setting page
+            // Register a new settings page
             register_setting($this->option_group, $this->option_name);
-
-            // Register a new section
-            add_settings_section(
-                $this->option_group .'_section_user',
-                __( 'Lieferwochen-Management', $this->option_group_output ), array($this, 'versandkosten_beez_section_user_callback'),
-                $this->option_group
-            );
-        }
-
-
-        /**
-         * User section callback function.
-         *
-         * @param array $args  The settings array, defining title, id, callback.
-         */
-        function versandkosten_beez_section_user_callback( $args ) {
-            ?>
-            <p id="<?php echo esc_attr( $args['id'] ); ?>">
-                <?php esc_html_e( 'Hier kann die Kapazität für Lieferwochen eingestellt werden.', $this->option_group ); ?>
-            </p>
-            <?php
         }
 
         /**
-         * Add the top level menu page.
+         * Add the menu page
          */
         function versandkosten_beez_options_page() {
             add_menu_page(
@@ -63,6 +56,9 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
             );
         }
 
+        /**
+         * Output the options page
+         */
         private function loadSettingsHtml(){
             $year = $_GET['year'] ?? date('Y');
 
@@ -74,19 +70,80 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
 
         }
 
+        /**
+         * Output year panel
+         * @param $year
+         * @return void
+         */
         private function loadYearChangeHTML($year){
             ?>
             <div class="year-change">
-                <button onclick="window.location.href = '<?php echo admin_url('admin.php?page=Versandkosten Beez&year=');?>' + (parseInt(document.getElementsByName('year')[0].value) - 1)">Vorheriges Jahr</button>
-                <input type="number" name="year" value="<?php echo $year;?>" onchange="window.location.href = '<?php echo admin_url('admin.php?page=Versandkosten Beez&year=');?>' + this.value">
-                <button onclick="window.location.href = '<?php echo admin_url('admin.php?page=Versandkosten Beez&year=');?>' + (parseInt(document.getElementsByName('year')[0].value) + 1)">Nächstes Jahr</button>
+                <button onclick="window.location.href = '<?php echo admin_url('admin.php?page='.$this->option_group.'&year=');?>' + (parseInt(document.getElementsByName('year')[0].value) - 1)">Vorheriges Jahr</button>
+                <input type="number" name="year" value="<?php echo esc_attr($year);?>" onchange="window.location.href = '<?php echo admin_url('admin.php?page='.$this->option_group.'&year=');?>' + this.value">
+                <button onclick="window.location.href = '<?php echo admin_url('admin.php?page='.$this->option_group.'&year=');?>' + (parseInt(document.getElementsByName('year')[0].value) + 1)">Nächstes Jahr</button>
             </div>
             <?php
         }
 
+        /**
+         * Output the table with all weeks of the year as a form
+         * @param $year
+         * @return void
+         */
+        private function loadWeeksTableHtml($year){
+            ?>
+            <form action="<?php echo admin_url('admin.php?page='.$this->option_group.'&year='.$year);?>" method="post">
+                <table class="weeks-table">
+                    <thead>
+                    <tr>
+                        <th>Woche</th>
+                        <th>Maximale Kapazität</th>
+                        <th>Verfügbare Kapazität</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php
+                    for($i = 1; $i <= 52; $i++){
+                        //ignore all weeks that are already in the past
+                        if($i < date('W') && $year <= date('Y')){
+                            continue;
+                        }
+
+                        $week = new VersandkostenBeezLieferwoche($i, $year);
+                        ?>
+                        <tr style="text-align: center; font-size: 15px;">
+                            <td><?php echo "KW ".$week->getWeek()." (".$week->getStart()." - ".$week->getEnd()." ";?></td>
+                            <td><input type="number" name="week_<?php echo $week->getWeek();?>" value="<?php echo $week->getMaxCapacity();?>"></td>
+                            <td style="background-color: <?php echo $week->getTakenCapacity() == $week->getMaxCapacity() ? 'red' : 'green';?>; color: white; ">
+                                <?php echo $week->getMaxCapacity() - $week->getTakenCapacity();?>
+                            </td>
+                        </tr>
+                        <?php
+                    }
+                    ?>
+                    </tbody>
+                </table>
+
+                <?php
+                // add save button
+                $this->loadSaveButtonHtml();
+                ?>
+
+            </form>
+
+            <?php
+        }
+
+
+
+        /**
+         * Process the input of the new availability
+         */
         public function processForm(){
+            // get the year
             $year = $_GET['year'] ?? date('Y');
 
+            // change the values in the database
             $changed = false;
             $success = true;
             foreach($_POST as $key => $value){
@@ -97,6 +154,7 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
                 }
             }
 
+            // show success or error message
             if($changed){
                 if($success){
                     $this->loadSuccessMessage();
@@ -106,6 +164,9 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
             }
         }
 
+        /**
+         * Show the success message
+         */
         function loadSuccessMessage(){
             ?>
             <div class="notice notice-success is-dismissible">
@@ -114,6 +175,9 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
             <?php
         }
 
+        /**
+         * Show the error message
+         */
         function loadErrorMessage(){
             ?>
             <div class="notice notice-error is-dismissible">
@@ -122,48 +186,10 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
             <?php
         }
 
-        private function loadWeeksTableHtml($year){
-            ?>
-                <form action="<?php echo admin_url('admin.php?page=Versandkosten Beez&year='.$year);?>" method="post">
-                    <table class="weeks-table">
-                        <thead>
-                            <tr>
-                                <th>Woche</th>
-                                <th>Maximale Kapazität</th>
-                                <th>Verwendete Kapazität</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php
-                                for($i = 1; $i <= 52; $i++){
-                                    //ignore all weeks that are already in the past
-                                    if($i < date('W') && $year <= date('Y')){
-                                        continue;
-                                    }
 
-                                    $week = new VersandkostenBeezLieferwoche($i, $year);
-                            ?>
-                                <tr style="text-align: right;">
-                                    <td><?php echo "KW ".$week->getWeek()." (".$week->getStart()." - ".$week->getEnd()." ";?></td>
-                                    <td><input type="number" name="week_<?php echo $week->getWeek();?>" value="<?php echo $week->getMaxCapacity();?>"></td>
-                                    <td><?php echo $week->getTakenCapacity();?></td>
-                                </tr>
-                            <?php
-                                }
-                            ?>
-                        </tbody>
-                    </table>
-
-                    <?php
-                    // add save button
-                    $this->loadSaveButtonHtml();
-                    ?>
-
-                </form>
-
-            <?php
-        }
-
+        /**
+         * Output the save button
+         */
         private function loadSaveButtonHtml(){
             ?>
             <div class="save-button">
