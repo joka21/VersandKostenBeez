@@ -243,9 +243,21 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
          */
         public function get_plz_info($plz) {
             if(!preg_match('/^\d{5}$/',$plz)) return false;
+
+            // get cache
+            $cache_key = 'plz_info_'.$plz;
+            $cache = get_transient($cache_key);
+            if($cache !== false) {
+                return $cache;
+            }
+
             $url = 'http://geonames.org/postalCodeLookupJSON?postalcode='.$plz.'&country=DE';
             $response = file_get_contents($url);
             $resp_arr = json_decode($response,true);
+
+            // cache response for 1 day
+            set_transient($cache_key, $resp_arr["postalcodes"][0], 60*60*24*30);
+
             return $resp_arr["postalcodes"][0] ?? null;
         }
 
@@ -273,6 +285,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 'origins' => $origin_zip . ', Germany',
                 'destinations' => $destination_zip . ', Germany',
                 'mode' => $travel_mode,
+                'units' => 'metric',
                 'key' => $api_key,
             );
             $url .= '?' . http_build_query($params);
@@ -284,7 +297,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
 
                 // cache result for 30 days
                 $ret = array('distance' => $distance, 'duration' => $duration);
-                set_transient($cache_key, $ret, 60 * 60 * 30);
+                set_transient($cache_key, $ret, 60 * 60 * 24 * 30);
                 return $ret;
             } else {
                 $this->add_notice('Es kam zu einem Fehler beim Zugriff auf die Google Maps API', 'error');
