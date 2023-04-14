@@ -24,6 +24,19 @@
                     $this->create_table();
                 }
 
+                public function are_all_orders_available($lieferwochen){
+                    $ret = array('status' => true);
+                    foreach($lieferwochen as $lieferwoche){
+                        $calendar_week = $lieferwoche['woche'] ?? 0;
+                        $year = $lieferwoche['jahr'] ?? 0;
+                        if(!$this->is_available($calendar_week, $year)){
+                            $ret['status'] = false;
+                            $ret['lieferwochen'][] = $lieferwoche;
+                        }
+                    }
+                    return $ret;
+                }
+
                 private function drop_table($name){
                     $sql = "
                         DROP TABLE IF EXISTS $name;
