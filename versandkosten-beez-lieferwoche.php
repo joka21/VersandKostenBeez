@@ -42,40 +42,44 @@ if(!class_exists('VersandkostenBeezLieferwoche')):
             $this->end = $end->format('d.m.Y');
         }
 
-        public function getWeek(){
+        public function getWeek(): int
+        {
             return $this->week;
         }
 
-        public function getYear(){
+        public function getYear(): int
+        {
             return $this->year;
         }
 
-        public function getStart(){
+        public function getStart(): string
+        {
             return $this->start;
         }
 
-        public function getEnd(){
+        public function getEnd(): string
+        {
             return $this->end;
         }
 
-        public function getEnabled(){
+        public function getEnabled(): bool
+        {
             return $this->enabled;
         }
 
-        public function getTakenCapacity(){
+        public function getTakenCapacity(): int
+        {
             return $this->taken_capacity;
         }
 
-        public function getMaxCapacity(){
+        public function getMaxCapacity(): int
+        {
             return $this->max_capacity;
         }
 
-        public function getAvailableCapacity(){
+        public function getAvailableCapacity(): int
+        {
             return $this->max_capacity - $this->taken_capacity;
-        }
-
-        public function isAvailable(){
-            return $this->getAvailableCapacity() > 0;
         }
 
     }

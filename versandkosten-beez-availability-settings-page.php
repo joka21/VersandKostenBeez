@@ -114,8 +114,8 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
                         <tr style="text-align: center; font-size: 15px;">
                             <td><?php echo "KW ".$week->getWeek()." (".$week->getStart()." - ".$week->getEnd()." ";?></td>
                             <td><input type="number" name="week_<?php echo $week->getWeek();?>" value="<?php echo $week->getMaxCapacity();?>"></td>
-                            <td style="background-color: <?php echo $week->getTakenCapacity() == $week->getMaxCapacity() ? 'red' : 'green';?>; color: white; ">
-                                <?php echo $week->getMaxCapacity() - $week->getTakenCapacity();?>
+                            <td style="background-color: <?php echo $week->getAvailableCapacity() === 0 ? 'red' : 'green';?>; color: white; ">
+                                <?php echo $week->getAvailableCapacity(); ?>
                             </td>
                         </tr>
                         <?php
