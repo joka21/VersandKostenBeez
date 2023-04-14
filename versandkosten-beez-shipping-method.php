@@ -251,23 +251,23 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
 
         /**
          * Calculate distance and duration between two zip codes with Google Maps API
-         * TODO: Google Maps API key ersetzen und Daten testen
          * @param string $origin_zip
          * @param string $destination_zip
          * @param string $travel_mode
          * @return array $distance, $duration in meters and seconds
          * @throws Exception
          */
-        private function get_distance_duration($origin_zip, $destination_zip, $travel_mode = 'driving') : array
+        private function get_distance_duration(string $origin_zip, string $destination_zip, string $travel_mode = 'driving') : array
         {
-            //DUMMY-WERT:
-            if($destination_zip == "96332"){
-                return array('distance' => 0, 'duration' => 0);
+            $api_key = 'AIzaSyA0fWtV58YretdjZUQ7xAv4alaSsTOECLQ';
+
+            // check if zip code is cached
+            $cache_key = 'distance_duration_' . $origin_zip . '_' . $destination_zip . '_' . $travel_mode;
+            $distance_duration = get_transient($cache_key);
+            if ($distance_duration !== false) {
+                return $distance_duration;
             }
-            return array('distance' => 120000, 'duration' => 7200);
 
-
-            $api_key = 'your_api_key';
             $url = 'https://maps.googleapis.com/maps/api/distancematrix/json';
             $params = array(
                 'origins' => $origin_zip . ', Germany',
@@ -281,7 +281,11 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             if ($data->status == 'OK') {
                 $distance = $data->rows[0]->elements[0]->distance->value;
                 $duration = $data->rows[0]->elements[0]->duration->value;
-                return array('distance' => $distance, 'duration' => $duration);
+
+                // cache result for 365 days
+                $ret = array('distance' => $distance, 'duration' => $duration);
+                set_transient($cache_key, $ret, 60 * 60 * 365);
+                return $ret;
             } else {
                 $this->add_notice('Es kam zu einem Fehler beim Zugriff auf die Google Maps API', 'error');
                 return(array('distance' => 0, 'duration' => 0));
