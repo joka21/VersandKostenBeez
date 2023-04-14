@@ -1,11 +1,10 @@
 <?php
 
+require_once ('versandkosten-beez-lieferwoche.php');
 if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
     class Versand_Kosten_Beez_Shipping_Method extends WC_Shipping_Method {
-        public $id                   = 'versand-kosten-beez-shipping-method';
-        public $method_title         = ('Versand Kosten Beez Einstellungen');
-        public $method_description   = ('Einstellungen für die Berechnung der Versandkosten' );
 
+        // Variables for calculations
         private float $spritpreis;
         private float $spritverbrauch;
         private float $lohnkosten;
@@ -13,24 +12,38 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
         private float $beentladen;
         private int $origin_plz;
 
-        private VersandkostenBeezAvailabilityDao $breez_shipping_availability_controller;
+        // Database connection for availability
+        private VersandkostenBeezAvailabilityDao $versandkostenBeezAvailabilityDao;
 
+        /**
+         * Constructor for the versandkosten_beez
+         * @access public
+         * @return void
+         */
         public function __construct(){
-            $this->tax_status           = "none";
-            $this->availability         = 'including';
-            $this->countries            = array('DE');
+            parent::__construct();
 
+            $this->id                   = 'versand-kosten-beez-shipping-method';
+            $this->method_title         = ('Versand Kosten Beez Einstellungen');
+            $this->method_description   = ('Einstellungen für die Berechnung der Versandkosten' );
+            $this->tax_status           = "none";
             $this->init();
         }
 
+        // This is a static variable to make sure the hooks are only loaded once
         private static bool $hooks_loaded = false;
+
+        /**
+         * Init the Versandkosten Beez shipping method
+         * @return void
+         */
         function init(){
             //Load database connection
-            $this->breez_shipping_availability_controller = VersandkostenBeezAvailabilityDao::getInstance();
+            $this->versandkostenBeezAvailabilityDao = VersandkostenBeezAvailabilityDao::getInstance();
 
             //Load the settings API
-            $this->init_form_fields();  // This is part of the settings API. Override the method to add your own settings
-            $this->init_settings();     // This is part of the settings API. Loads settings you previously init.
+            $this->init_form_fields();
+            $this->init_settings();
 
             // Define user set variables.
             $this->spritpreis           = doubleval($this->get_option( 'spritpreis' ));
@@ -49,22 +62,24 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
 
                 // Save settings in admin if you have any defined
                 add_action('woocommerce_update_options_shipping_' . $this->id, array($this, 'process_admin_options'));
-                add_action('woocommerce_admin_field_display_some_text_in_admin', array($this, 'display_some_text_in_admin'));
 
-                add_action('woocommerce_review_order_before_cart_contents', array($this, 'validate_order'));
-                add_action('woocommerce_after_checkout_validation', array($this, 'validate_order'));
+                add_filter( 'woocommerce_cart_no_shipping_available_html', array($this, 'change_no_shipping_message'));
+                add_filter( 'woocommerce_no_shipping_available_html',  array($this, 'change_no_shipping_message'));
 
                 // process checkout hook
-                add_action('woocommerce_thankyou', array($this, 'checkout_order'));
-                add_action('woocommerce_order_status_changed',  array($this, 'ckeck_order_status_changed'), 10, 3);
+                add_action('woocommerce_order_status_changed',  array($this, 'check_order_status_changed'), 10, 3);
 
                 // add lieferwoche to cart item
-                add_filter('woocommerce_add_cart_item_data', array($this, 'custom_add_cart_item_data'), 10, 3);
-                add_filter('woocommerce_get_item_data', array($this, 'custom_get_item_data'), 10, 2);
-                add_action('woocommerce_checkout_create_order_line_item', array($this, 'custom_create_order_line_item'), 10, 4);
+                add_filter('woocommerce_add_cart_item_data', array($this, 'add_shipping_information_to_cart_item'), 10, 3);
+                add_filter('woocommerce_get_item_data', array($this, 'show_shipping_information_in_cart'), 10, 2);
+                add_action('woocommerce_checkout_create_order_line_item', array($this, 'add_shipping_week_information_to_order'), 10, 4);
             }
         }
 
+        /**
+         * Initialize settings form fields
+         * @return void
+         */
         function init_form_fields(){
             $this->form_fields = array(
                 'spritpreis' => array(
@@ -118,9 +133,70 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             );                                                                                                                                                                                        
         }
 
-                                                                                      
+
+        /**
+         * Display a custom error message if this shipping method is not available
+         * @param $message
+         * @return array|string
+         */
+        public function change_no_shipping_message($message){
+            return WC()->session->get('error_message_shipping_breez') ?? $message;
+        }
+
+        /**
+         * Check if this shipping method is available based on the package and defined settings.
+         * @param $package
+         * @return bool
+         * @throws Exception
+         */
+        public function is_available($package = array()){
+            //validate plz
+            $plz = $package["destination"]["postcode"] ?? '';
+            if($this->validate_german_zip($plz) === false) {
+                return false;
+            }
+
+            //get distinct lieferwoche from cart items
+            $lieferwochen = array();
+            foreach (WC()->cart->get_cart_contents() as $cart_item) {
+                $lieferwochen[] = $cart_item["lieferwoche"];
+            }
+
+            //check if all lieferwochen are available
+            $all_available = $this->versandkostenBeezAvailabilityDao->are_all_orders_available($lieferwochen);
+            if($all_available['status'] === false) {
+                //add notice
+                $info = "";
+                foreach($all_available['lieferwochen'] as $lieferwoche) {
+                    $info .= "KW " . $lieferwoche['woche'] . " " . $lieferwoche['jahr'];
+                    //only add comma if not last element
+                    if ($lieferwoche !== end($all_available['lieferwochen'])) {
+                        $info .= ", ";
+                    }
+                }
+                $this->add_notice('Die folgenden Lieferwochen sind nicht mehr verfügbar: '.$info, 'error', true);
+                WC()->session->set('error_message_shipping_breez', 'Die folgenden Lieferwochen sind nicht mehr verfügbar: '.$info);
+                return false;
+            }
+
+            WC()->session->set('error_message_shipping_breez', '');
+            return true;
+        }
+
+
+        /**
+         * Calculate shipping costs
+         * @access public
+         * @param mixed $package
+         * @return void
+         * @throws Exception
+         */
         public function calculate_shipping( $package = array()){
-            $plz = $package["destination"]["postcode"];
+            if($this->is_available($package) === false) {
+                throw new Exception("Versandkosten können nicht berechnet werden");
+            }
+
+            $plz = $package["destination"]["postcode"] ?? '';
             $versandkosten = $this->get_shipping_costs($plz);
 
             // set cookie if they're different
@@ -130,38 +206,38 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
 
             //get distinct lieferwoche from cart items
             $lieferwochen = array();
-            //get lieferwoche from cart item data
             foreach (WC()->cart->get_cart_contents() as $cart_item) {
                 $lieferwochen[] = $cart_item["lieferwoche"]['woche'];
             }
-            $lieferwochen = array_unique($lieferwochen);
+
+            // remove duplicates
+            $lieferwochen = array_map("unserialize", array_unique(array_map("serialize", $lieferwochen)));
+
+            // multiply shipping costs with number of weeks
             $versandkosten *= count($lieferwochen);
 
-            foreach ($lieferwochen as $lieferwoche) {
-                $rate = array(
-                    'id' => $this->id,       // ID for the rate
-                    'label' => $this->title,    // Label for the rate
-                    'cost' => $versandkosten,  // Amount for shipping or an array of costs (for per item shipping)
-                );
-                $this->add_rate($rate);
-            }
+            // add shipping costs
+            $rate = array(
+                'id' => $this->id,
+                'label' => $this->title,
+                'cost' => $versandkosten,
+            );
+            $this->add_rate($rate);
         }
+
 
         /**
          * Validate German zip code with GeoNames API
-         * Premium-Lizenzen möglich
          * @param string $plz
          * @return bool
          */
         public function validate_german_zip($plz) {
             if(!preg_match('/^\d{5}$/',$plz)) return false;
-            $rw = $this->get_plz_info($plz) != null;
-            return $rw;
+            return $this->get_plz_info($plz) != null;
         }
 
         /**
          * Get city info with GeoNames API
-         * @License: Creative COmmons Attribution 4.0 License -> https://creativecommons.org/licenses/by/4.0/
          * @param string $plz
          * @return array | bool
          */
@@ -170,20 +246,20 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             $url = 'http://geonames.org/postalCodeLookupJSON?postalcode='.$plz.'&country=DE';
             $response = file_get_contents($url);
             $resp_arr = json_decode($response,true);
-            return $resp_arr["postalcodes"][0];
+            return $resp_arr["postalcodes"][0] ?? null;
         }
-
 
         /**
          * Calculate distance and duration between two zip codes with Google Maps API
-         * TODO: Google Maps API key ersetzen
+         * TODO: Google Maps API key ersetzen und Daten testen
          * @param string $origin_zip
          * @param string $destination_zip
          * @param string $travel_mode
          * @return array $distance, $duration in meters and seconds
          * @throws Exception
          */
-        private function get_distance_duration($origin_zip, $destination_zip, $travel_mode = 'driving') {
+        private function get_distance_duration($origin_zip, $destination_zip, $travel_mode = 'driving') : array
+        {
             //DUMMY-WERT:
             if($destination_zip == "96332"){
                 return array('distance' => 0, 'duration' => 0);
@@ -208,16 +284,19 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 return array('distance' => $distance, 'duration' => $duration);
             } else {
                 $this->add_notice('Es kam zu einem Fehler beim Zugriff auf die Google Maps API', 'error');
+                return(array('distance' => 0, 'duration' => 0));
             }
         }
 
 
         /**
-        * Shipping cost function.
-        * @param string $destination_plz
-        * @return double $versandkosten
-        */
-        public function get_shipping_costs($destination_plz) {
+         * Shipping cost function.
+         * @param string $destination_plz
+         * @return double $versandkosten
+         * @throws Exception
+         */
+        public function get_shipping_costs(string $destination_plz) : float
+        {
             // Validate German zip code
             if($this->validate_german_zip($destination_plz)){
                 // Get distance and duration between origin and destination
@@ -230,7 +309,8 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 // Calculate shipping costs and return
                 return $this->calculate_shipping_costs($entfernung, $fahrzeit);
             }else{
-                $this->add_notice('Der eingegebene Wert entspricht keiner belieferbaren deutschen Postleitzahl.', 'error');
+                $this->add_notice('Der eingegebene Wert ist keine belieferbare deutsche Postleitzahl.', 'error');
+                return 0;
             }
         }
 
@@ -240,11 +320,11 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
          * @param double $entfernung in kilometers
          * @param double $fahrzeit in hours
          * @return double $versandkosten
+         * @throws Exception
          */
-        private function calculate_shipping_costs($entfernung, $fahrzeit){
-            if(isset($entfernung) && isset($fahrzeit) && $entfernung !== null && $fahrzeit !== null &&
-                isset($this->spritpreis) && isset($this->spritverbrauch) && isset($this->lohnkosten) && isset($this->wartungskosten) && isset($this->beentladen)
-            ){
+        private function calculate_shipping_costs($entfernung, $fahrzeit): float
+        {
+            if(isset($entfernung) && isset($fahrzeit) && isset($this->spritpreis) && isset($this->spritverbrauch) && isset($this->lohnkosten) && isset($this->wartungskosten) && isset($this->beentladen)) {
                 // Convert all values to double
                 $entfernung = doubleval($entfernung);
                 $fahrzeit = doubleval($fahrzeit);
@@ -263,81 +343,45 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 // round to 2 decimal places and return
                 return round($versandkosten, 2);
             }
-            $this->add_notice('Es sind nicht alle Variablen für die Versandkostenberechnung gesetzt.', 'error');
+
+            $this->add_notice('Es sind nicht alle Variablen für die Versandkostenberechnung gesetzt. Bitte kontaktieren Sie den Admin.', 'error');
+            return 0;
         }
 
 
-        function validate_order($posted){
-
-            $this->add_notice("Order: TEst", "warning");
-
-            GLOBAL $woocommerce;
-            $plz = $posted['shipping_postcode'] ?? "";
-            if(!$this->validate_german_zip($plz)){
-                $this->add_notice('Der eingegebene Wert entspricht keiner belieferbaren deutschen Postleitzahl.', 'error');
-            }
-
-            //check if all products have a lieferwoche attribute
-            foreach ( $woocommerce->cart->get_cart_contents() as $cart_item ) {
-                $lieferwoche = $cart_item["lieferwoche"];
-                if(!$this->breez_shipping_availability_controller->is_available($lieferwoche['woche'], $lieferwoche['jahr'])){
-                    $this->add_notice('Eine Lieferwoche ist nicht verfügbar. Bitte entfernen Sie das betroffene Produkt.', 'error');
-                }
-            }
-        }
 
         /**
-         * Add notice to cart or checkout page or else throws an exception
-         * @param string $message
-         * @param string $notice_type
-         * @return void
-         * @throws Exception
+         * Get the next delivery weeks (default 4)
+         * @param int $amount
+         * @return array
          */
-        function add_notice($message, $notice_type){
-            if(is_checkout() || is_cart()){
-                //make notice dismisible
-                $notice_type = $notice_type . ' dismissible';
-                if(!wc_has_notice(__($message, 'woocommerce'), $notice_type)){
-                    wc_add_notice(__($message, 'woocommerce'), $notice_type);
-                }
-            }else{
-                throw new Exception($message);
-            }
-        }
-
-        public function get_lieferwochen(){
+        public function get_lieferwochen(int $amount = 4) : array
+        {
             $lieferwochen = array();
-            for($i = 0; $i < 4; $i++) {
-                $current_calendar_week = date("W", strtotime("+" . $i . " week monday"));
-                $current_calendar_year = date("Y", strtotime("+" . $i . " week monday"));
+            for($i = 0; $i < $amount; $i++) {
+                // if today is friday or later increase $i
+                $current_week_offset = $i;
+                if(date("N") >= 5){
+                    $current_week_offset++;
+                }
 
-                $lieferwochen[] = $this->get_lieferwochen_info($current_calendar_week, $current_calendar_year);
+                $current_calendar_week = date("W", strtotime("+" . ($current_week_offset - 1) . " week monday"));
+                $current_calendar_year = date("Y", strtotime("+" . ($current_week_offset - 1) . " week monday"));
+
+                $lieferwochen[] = new VersandkostenBeezLieferwoche($current_calendar_week, $current_calendar_year);
             }
             return $lieferwochen;
         }
 
-        public function get_lieferwochen_info($week, $year){
-            // get monday and friday of the week in that year
-            $start_date = date("d.m.Y", strtotime($year . "W" . $week . "1"));
-            $end_date = date("d.m.Y", strtotime($year . "W" . $week . "5"));
-
-            return array(
-                "week" => $week,
-                "year" => $year,
-                "start" => $start_date,
-                "end" => $end_date,
-                "enabled" => $this->breez_shipping_availability_controller->is_available($week, date("Y"))
-            );
-        }
-
-
         /**
          * Add shipping week information to cart item
+         * @throws Exception
          */
-        function custom_add_cart_item_data( $cart_item_data, $product_id, $variation_id ) {
-            $lieferwoche = $_POST['lieferwoche'] ?? "";
-            $lieferjahr = $_POST['lieferjahr'] ?? "";
-            if($lieferwoche !== "" && $lieferjahr !== "" && $this->breez_shipping_availability_controller->is_available($lieferwoche, $lieferjahr)){
+        function add_shipping_information_to_cart_item($cart_item_data, $product_id, $variation_id ) : array
+        {
+            $lieferwoche = $_POST['lieferwoche'] ?? null;
+            $lieferjahr = $_POST['lieferjahr'] ?? null;
+            if($lieferwoche !== null && $lieferjahr !== null && $this->versandkostenBeezAvailabilityDao->is_available($lieferwoche, $lieferjahr)){
                 //change cart data of item with lieferwoche
                 $cart_item_data['lieferwoche'] = array(
                     'woche' =>$lieferwoche,
@@ -351,18 +395,20 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
 
         /**
          * Show shipping week information in cart and checkout
+         * @throws Exception
          */
-        function custom_get_item_data( $item_data, $cart_item_data ) {
+        function show_shipping_information_in_cart($item_data, $cart_item_data ) : array
+        {
+            // Check if shipping week is set
             if( isset( $cart_item_data['lieferwoche'] ) ) {
-                $week = $cart_item_data['lieferwoche']['woche'];
-                $year = $cart_item_data['lieferwoche']['jahr'];
+                $week = $cart_item_data['lieferwoche']['woche'] ?? "";
+                $year = $cart_item_data['lieferwoche']['jahr'] ?? "";
 
-                $lieferwochen_info = $this->get_lieferwochen_info($week, $year);
-                $start = $lieferwochen_info['start'];
-                $end = $lieferwochen_info['end'];
-                $enabled = $lieferwochen_info['enabled'];
+                $lieferwochen_info = new VersandkostenBeezLieferwoche($week, $year);
+                $start = $lieferwochen_info->getStart();
+                $end = $lieferwochen_info->getEnd();
 
-                if($enabled) {
+                if($lieferwochen_info->getEnabled()) {
                     $item_data[] = array(
                         'key' => __('Lieferwoche', 'versandkosten-beez'),
                         'value' => wc_clean("KW $week ($start - $end)")
@@ -375,113 +421,138 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 }
                 return $item_data;
             }
-            $this->add_notice("Ein Fehler ist bei der Verarbeitung der Lieferwoche augetreten.", "error");
+            $this->add_notice("Ein Fehler ist bei der Verarbeitung der Lieferwoche augetreten.", "error", true);
+            return $item_data;
         }
 
-        function custom_create_order_line_item( $item, $cart_item_key, $values, $order ) {
+        /**
+         * Add shipping week information to order
+         * @throws Exception
+         */
+        function add_shipping_week_information_to_order($item, $cart_item_key, $values, $order ) {
             if( isset( $values['lieferwoche'] ) ) {
-                $week = $values['lieferwoche']['woche'];
-                $year = $values['lieferwoche']['jahr'];
+                $week = $values['lieferwoche']['woche'] ?? "";
+                $year = $values['lieferwoche']['jahr'] ?? "";
 
-                $lieferwochen_info = $this->get_lieferwochen_info($week, $year);
-                $start = $lieferwochen_info['start'];
-                $end = $lieferwochen_info['end'];
+                $lieferwochen_info = new VersandkostenBeezLieferwoche($week, $year);
+                $start = $lieferwochen_info->getStart();
+                $end = $lieferwochen_info->getEnd();
 
-                if(!$lieferwochen_info['enabled']) {
-                    $this->add_notice("Die Lieferung in der KW $week ($start - $end) ist nicht verfügbar. Bitte entfernen Sie die betroffenen Produkte aus dem Warenkorb.", "error");
-                    //throw new Exception("Die Lieferung in der KW $week ($start - $end) ist nicht verfügbar. Bitte entfernen Sie die betroffenen Produkte aus dem Warenkorb.");
+                // check if week is available
+                if(!$lieferwochen_info->getEnabled()) {
+                    $this->add_notice("Die Lieferung in der KW $week ($start - $end) ist nicht verfügbar. Bitte entfernen Sie die betroffenen Produkte aus dem Warenkorb.", "error", true);
+                    return;
                 }
 
+                // add shipping week to order
                 $item->add_meta_data(
                     __( 'Lieferwoche', 'versandkosten-beez' ),
                     wc_clean("KW $week ($start - $end)"),
                     true
                 );
 
-
+                // add shipping week to order meta
                 $existing_meta = $order->get_meta('hidden_lieferwoche');
                 if(!is_array($existing_meta)){
                     $existing_meta = array();
                 }
+
                 $existing_meta[] = array('woche' => $week, 'jahr' => $year);
                 $order->add_meta_data('hidden_lieferwoche',
                     $existing_meta,
-                    true);
-
+                    true
+                );
             }
         }
 
 
-        function ckeck_order_status_changed($order_id, $old_status, $new_status){
+        /**
+         * Manage order status changes
+         * @param $order_id int
+         * @param $old_status string
+         * @param $new_status string
+         * @return void
+         * @throws Exception
+         */
+        function check_order_status_changed($order_id, $old_status, $new_status)
+        {
             $order = wc_get_order($order_id);
 
-            //Change takencapacity if order is cancelled
             if($new_status == "cancelled" || $new_status == "failed" || $new_status == "refunded"){
+                //Change taken capacity if order is cancelled
                 $lieferwochen = $order->get_meta('hidden_lieferwoche') ?? array();
                 if(count($lieferwochen) != 0) {
                     foreach ($lieferwochen as $lieferwoche) {
-                        $this->breez_shipping_availability_controller->increase_availabilty($lieferwoche['woche'], $lieferwoche['jahr'], $order_id);
+                        $this->versandkostenBeezAvailabilityDao->increase_availabilty($lieferwoche['woche'], $lieferwoche['jahr'], $order_id);
                     }
                 }
-            }else{
+            }else {
                 $this->checkout_order($order_id);
             }
 
         }
 
-        function checkout_order($order_id){
+        /**
+         * Manage order checkout
+         * @param $order_id int
+         * @return void
+         * @throws Exception
+         */
+        function checkout_order(int $order_id)
+        {
             $order = wc_get_order($order_id);
             $lieferwochen = $order->get_meta('hidden_lieferwoche') ?? array();
             if(count($lieferwochen) != 0) {
                 // make sure the order was not already processed
-                if($this->breez_shipping_availability_controller->is_order_taking_availability($order_id)){
+                if($this->versandkostenBeezAvailabilityDao->is_order_taking_availability($order_id)){
                     return;
                 }
 
-                //$lieferwochen = array_unique($lieferwochen);
+                // only distinct lieferwochen
+                $lieferwochen = array_map("unserialize", array_unique(array_map("serialize", $lieferwochen)));
+
+                // check if all lieferwochen are still available
+                $all_available = $this->versandkostenBeezAvailabilityDao->are_all_orders_available($lieferwochen);
+                if(!$all_available['status']){
+                    $lieferwochen_string = "";
+                    foreach($all_available['lieferwochen'] as $lieferwoche){
+                        $lieferwochen_string .= "KW ".$lieferwoche['woche'] . " ". $lieferwoche['jahr'] . ", ";
+                    }
+                    $order->update_status('failed', 'Die folgenden Lieferwochen sind nicht mehr verfügbar: '.$lieferwochen_string);
+                    return;
+                }
+
+                // take availability
                 foreach ($lieferwochen as $lieferwoche) {
-                    if(!$this->breez_shipping_availability_controller->decrease_availabilty($lieferwoche['woche'], $lieferwoche['jahr'], $order_id)){
-                        $order->update_status('failed', 'Lieferwoche nicht mehr verfügbar');
+                    if(!$this->versandkostenBeezAvailabilityDao->decrease_availabilty($lieferwoche['woche'], $lieferwoche['jahr'], $order_id)){
+                        $order->update_status('failed', 'Lieferwoche KW '.$lieferwoche['woche'] .' ist nicht mehr verfügbar');
+                        $this->add_notice("Die Lieferwoche KW ".$lieferwoche['woche'] ." ist nicht mehr verfügbar", "error", true);
                     };
                 }
             }
         }
 
 
-        public function add_shipping_week_selection(){
-            ?>
-            <div id="shipping-informations-week">
-                <label for="select-lieferwochen">Lieferwoche *</label>
-                <select id="select-lieferwochen">
-                    <option value="">--Bitte auswählen --</option>
-                    <?php
-                    $lieferwochen = $this->get_lieferwochen();
-                    foreach($lieferwochen as $lieferwoche) {
-                        $week = $lieferwoche["week"];
-                        $year = $lieferwoche["year"];
-                        $start = $lieferwoche["start"];
-                        $end = $lieferwoche["end"];
-                        $enabled = $lieferwoche["enabled"];
-
-                        echo "<option data-year='$year' value='$week'";
-                        if($enabled) {
-                            echo ">KW $week ($start - $end)";
-                        } else {
-                            echo "disabled>
-                                            KW $week ($start - $end) - ausgebucht!";
-                        }
-                        echo "</option>";
-                    }
-                    ?>
-                </select>
-            </div>
-
-            <?php
+        /**
+         * Add notice to cart or checkout page or else throws an exception
+         * @param string $message
+         * @param string $notice_type
+         * @return void
+         * @throws Exception
+         */
+        function add_notice($message, $notice_type, $enforce_notice = false){
+            if(is_checkout() || is_cart() || $enforce_notice){
+                //make notice dismisible
+                $notice_type = $notice_type . ' dismissible';
+                if(!wc_has_notice(__($message, 'woocommerce'), $notice_type)){
+                    wc_add_notice(__($message, 'woocommerce'), $notice_type);
+                }
+            }else{
+                throw new Exception($message);
+            }
         }
 
     }
-
-
 
 
     // Add the shipping method to WooCommerce
