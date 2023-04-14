@@ -500,7 +500,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 $lieferwochen = $order->get_meta('hidden_lieferwoche') ?? array();
                 if(count($lieferwochen) != 0) {
                     foreach ($lieferwochen as $lieferwoche) {
-                        $this->versandkostenBeezAvailabilityDao->increase_availabilty($lieferwoche['woche'], $lieferwoche['jahr'], $order_id);
+                        $this->versandkostenBeezAvailabilityDao->free_availability($lieferwoche['woche'], $lieferwoche['jahr'], $order_id);
                     }
                 }
             }else {
@@ -541,7 +541,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
 
                 // take availability
                 foreach ($lieferwochen as $lieferwoche) {
-                    if(!$this->versandkostenBeezAvailabilityDao->decrease_availabilty($lieferwoche['woche'], $lieferwoche['jahr'], $order_id)){
+                    if(!$this->versandkostenBeezAvailabilityDao->take_availability($lieferwoche['woche'], $lieferwoche['jahr'], $order_id)){
                         $order->update_status('failed', 'Lieferwoche KW '.$lieferwoche['woche'] .' ist nicht mehr verfügbar');
                         $this->add_notice("Die Lieferwoche KW ".$lieferwoche['woche'] ." ist nicht mehr verfügbar", "error", true);
                     };

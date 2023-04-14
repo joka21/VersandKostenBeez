@@ -2,20 +2,28 @@
     if ( in_array( 'woocommerce/woocommerce.php', apply_filters( 'active_plugins', get_option( 'active_plugins' ) ) ) ) {
         if ( ! class_exists('VersandkostenBeezAvailabilityDao')){
             class VersandkostenBeezAvailabilityDao{
-                private $table_name_capacity;
-                private $table_name_takenavailability;
+                private string $table_name_capacity;
+                private string $table_name_takenavailability;
                 private $wpdb;
 
                 private static ?VersandkostenBeezAvailabilityDao $instance = null;
 
+                /**
+                 * Get the instance via lazy initialization (created on first usage)
+                 * @return VersandkostenBeezAvailabilityDao
+                 */
                 public static function getInstance(){
                     if(self::$instance == null){
                         self::$instance = new VersandkostenBeezAvailabilityDao();
                     }
                     return self::$instance;
                 }
-                
-                private function __construct(){
+
+                /**
+                 * Private constructor to prevent creating a new instance of the singleton
+                 */
+                private function __construct()
+                {
                     //create database connection with wordpress
                     global $wpdb;
                     $this->wpdb = $wpdb;
@@ -24,33 +32,30 @@
                     $this->create_table();
                 }
 
-                public function are_all_orders_available($lieferwochen){
-                    $ret = array('status' => true);
-                    foreach($lieferwochen as $lieferwoche){
-                        $calendar_week = $lieferwoche['woche'] ?? 0;
-                        $year = $lieferwoche['jahr'] ?? 0;
-                        if(!$this->is_available($calendar_week, $year)){
-                            $ret['status'] = false;
-                            $ret['lieferwochen'][] = $lieferwoche;
-                        }
-                    }
-                    return $ret;
-                }
-
-                private function drop_table($name){
+                /**
+                 * Private function to drop a table (only needed for testing or changing the table structure)
+                 */
+                private function drop_table($name)
+                {
                     $sql = "
                         DROP TABLE IF EXISTS $name;
                     ";
                     $this->wpdb->query($sql);
                 }
 
-                public function create_table(){
+                /**
+                 * Private function to create the database tables if they do not exist
+                 */
+                private function create_table()
+                {
                     //$this->drop_table($this->table_name_takenavailability);
                     //$this->drop_table($this->table_name_capacity );
 
                     $table_name_capacity = $this->table_name_capacity;
                     $table_name_takenavailability = $this->table_name_takenavailability;
 
+
+                    // create table for managing the capacity
                     $sql_table_capacity = "
                         CREATE TABLE IF NOT EXISTS $table_name_capacity (
                             calendar_week int(2) NOT NULL,
@@ -61,6 +66,7 @@
                     ";
                     $this->wpdb->query($sql_table_capacity);
 
+                    // create table for managing the usage of the capacity for each order
                     $sql_table_taken_availability = "
                         CREATE TABLE IF NOT EXISTS $table_name_takenavailability (
                             calendar_week int(2) NOT NULL,
@@ -76,7 +82,7 @@
                     ";
                     $this->wpdb->query($sql_table_taken_availability);
 
-                    //check if trigger doesnot exist
+                    // create a trigger that rejects new order entries if the capacity is already full
                     $sql = "SELECT count(*) FROM information_schema.triggers WHERE trigger_name = '${table_name_takenavailability}_trigger';";
                     $count = (int)$this->wpdb->get_var($sql);
                     if ($count == 0) {
@@ -96,7 +102,6 @@
 
 
                     //create a db trigger that rejects decreases in availability on table_name_capacity if the availability is smaller or equal to the taken availability by table_name_takenavailability
-
                     $sql = "SELECT count(*) FROM information_schema.triggers WHERE trigger_name = '${table_name_capacity}_trigger2';";
                     $count = (int)$this->wpdb->get_var($sql);
                     if ($count == 0) {
@@ -123,7 +128,8 @@
                  * @param $year
                  * @return void
                  */
-                public function create_calendar_week_if_not_exists($calendar_week, $year){
+                public function create_calendar_week_if_not_exists($calendar_week, $year)
+                {
                     $calendar_week = (int)$calendar_week;
                     $year = (int)$year;
 
@@ -142,7 +148,8 @@
                  * @param $availability
                  * @return bool
                  */
-                public function set_availabilty($calendar_week, $year, $availability) : bool{
+                public function set_availabilty($calendar_week, $year, $availability) : bool
+                {
                     $calendar_week = (int)$calendar_week;
                     $year = (int)$year;
                     $availability = (int)$availability;
@@ -152,7 +159,17 @@
                     return $this->wpdb->last_error === '';
                 }
 
-                public function get_max_availability($calendar_week, $year){
+                /**
+                 * Returns the maximal availability for a given calendar week
+                 * @param $calendar_week
+                 * @param $year
+                 * @return int
+                 */
+                public function get_max_availability($calendar_week, $year): int
+                {
+                    $calendar_week = (int)$calendar_week;
+                    $year = (int)$year;
+
                     $this->create_calendar_week_if_not_exists($calendar_week, $year);
 
                     $sql = "SELECT availability FROM $this->table_name_capacity WHERE calendar_week = %s and year = %s";
@@ -160,7 +177,14 @@
                 }
 
 
-                public function get_taken_availability($calendar_week, $year){
+                /**
+                 * Returns the taken availability for a given calendar week
+                 * @param $calendar_week
+                 * @param $year
+                 * @return int
+                 */
+                public function get_taken_availability($calendar_week, $year): int
+                {
                     $calendar_week = (int)$calendar_week;
                     $year = (int)$year;
 
@@ -171,7 +195,12 @@
                 }
 
 
-                public function is_order_taking_availability($order_id)
+                /**
+                 * Checks if the order is taking availability already
+                 * @param $order_id
+                 * @return bool
+                 */
+                public function is_order_taking_availability($order_id): bool
                 {
                     $sql = "
                         SELECT count(*) FROM $this->table_name_takenavailability WHERE order_id = %s;
@@ -180,7 +209,14 @@
                     return $count > 0;
                 }
 
-                public function is_available($calendar_week, $year){
+                /**
+                 * Checks if the calendar week is available
+                 * @param $calendar_week
+                 * @param $year
+                 * @return bool
+                 */
+                public function is_available($calendar_week, $year): bool
+                {
                     $calendar_week = (int)$calendar_week;
                     $year = (int)$year;
 
@@ -189,27 +225,63 @@
                     $current_week = date('W');
                     $current_year = date('Y');
 
-                    // check if the availability is not 0 and if the week is not in the past and today is not friday or later
+                    // check if the remaining availability is not 0 and if the week is not in the past and today is not friday or later
                     return ($this->get_max_availability($calendar_week, $year) > $this->get_taken_availability($calendar_week, $year)) &&
                         ($year >= $current_year && ($calendar_week > $current_week || ($calendar_week == $current_week && $current_day < 5)));
                 }
 
-                public function decrease_availabilty($calendar_week, $year, $order_id){
+                /**
+                 * Check if all orders are available
+                 * @param $lieferwochen
+                 * @return array|true[]
+                 */
+                public function are_all_orders_available($lieferwochen): array
+                {
+                    $ret = array('status' => true);
+                    foreach($lieferwochen as $lieferwoche){
+                        $calendar_week = $lieferwoche['woche'] ?? 0;
+                        $year = $lieferwoche['jahr'] ?? 0;
+                        if(!$this->is_available($calendar_week, $year)){
+                            $ret['status'] = false;
+                            $ret['lieferwochen'][] = $lieferwoche;
+                        }
+                    }
+                    return $ret;
+                }
+
+                /**
+                 * Try to take availability for an order at given calendar week
+                 * @param $calendar_week
+                 * @param $year
+                 * @param $order_id
+                 * @return bool success
+                 */
+                public function take_availability($calendar_week, $year, $order_id): bool
+                {
                     $calendar_week = (int)$calendar_week;
                     $year = (int)$year;
                     $order_id = (int)$order_id;
 
+                    // check if the calendar week is available
                     if(!$this->is_available($calendar_week, $year)){
                         return false;
                     }
 
+                    // take the availability
                     $sql = "INSERT INTO $this->table_name_takenavailability (calendar_week, year, order_id) VALUES (%s, %s, %s) ON DUPLICATE KEY UPDATE order_id = %s";
-
                     $this->wpdb->query($this->wpdb->prepare($sql, array($calendar_week, $year, $order_id, $order_id)));
                     return $this->wpdb->last_error === '';
                 }
 
-                public function increase_availabilty($calendar_week, $year, $order_id){
+                /**
+                 * Delete the taken availability for an order at given calendar week
+                 * @param $calendar_week
+                 * @param $year
+                 * @param $order_id
+                 * @return bool
+                 */
+                public function free_availability($calendar_week, $year, $order_id): bool
+                {
                     $calendar_week = (int)$calendar_week;
                     $year = (int)$year;
                     $order_id = (int)$order_id;
