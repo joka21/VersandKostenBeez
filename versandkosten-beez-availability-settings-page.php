@@ -99,6 +99,7 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
                         <th>Woche</th>
                         <th>Maximale Kapazität</th>
                         <th>Verfügbare Kapazität</th>
+                        <th>Temporär reservierte Kapazität</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -116,6 +117,9 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
                             <td><input type="number" name="week_<?php echo $week->getWeek();?>" value="<?php echo $week->getMaxCapacity();?>"></td>
                             <td style="background-color: <?php echo $week->getAvailableCapacity() === 0 ? 'red' : 'green';?>; color: white; ">
                                 <?php echo $week->getAvailableCapacity(); ?>
+                            </td>
+                            <td>
+                                <?php echo $week->getTemporarilyReservedCapacity(); ?>
                             </td>
                         </tr>
                         <?php

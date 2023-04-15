@@ -162,8 +162,11 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 $lieferwochen[] = $cart_item["lieferwoche"];
             }
 
+            // get reserved uuid
+            $reserved_uuid = WC()->session->get('versandkosten_beez_reservierung_uuid') ?? null;
+
             //check if all lieferwochen are available
-            $all_available = $this->versandkostenBeezAvailabilityDao->are_all_orders_available($lieferwochen);
+            $all_available = $this->versandkostenBeezAvailabilityDao->are_all_orders_available($lieferwochen, $reserved_uuid);
             if($all_available['status'] === false) {
                 //add notice
                 $info = "";
@@ -265,16 +268,15 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
          * Calculate distance and duration between two zip codes with Google Maps API
          * @param string $origin_zip
          * @param string $destination_zip
-         * @param string $travel_mode
          * @return array $distance, $duration in meters and seconds
          * @throws Exception
          */
-        private function get_distance_duration(string $origin_zip, string $destination_zip, string $travel_mode = 'driving') : array
+        private function get_distance_duration(string $origin_zip, string $destination_zip) : array
         {
             $api_key = 'AIzaSyA0fWtV58YretdjZUQ7xAv4alaSsTOECLQ';
 
             // check if zip code is cached
-            $cache_key = 'distance_duration_' . $origin_zip . '_' . $destination_zip . '_' . $travel_mode;
+            $cache_key = 'distance_duration_' . $origin_zip . '_' . $destination_zip;
             $distance_duration = get_transient($cache_key);
             if ($distance_duration !== false) {
                 return $distance_duration;
@@ -284,7 +286,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             $params = array(
                 'origins' => $origin_zip . ', Germany',
                 'destinations' => $destination_zip . ', Germany',
-                'mode' => $travel_mode,
+                'mode' => 'driving',
                 'units' => 'metric',
                 'key' => $api_key,
             );
@@ -375,6 +377,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
         public function get_lieferwochen(int $amount = 4) : array
         {
             $lieferwochen = array();
+            $reserved_uuid = WC()->session->get('versandkosten_beez_reservierung_uuid') ?? null;
             for($i = 0; $i < $amount; $i++) {
                 // if today is friday or later increase $i
                 $current_week_offset = $i;
@@ -385,7 +388,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 $current_calendar_week = date("W", strtotime("+" . ($current_week_offset - 1) . " week monday"));
                 $current_calendar_year = date("Y", strtotime("+" . ($current_week_offset - 1) . " week monday"));
 
-                $lieferwochen[] = new VersandkostenBeezLieferwoche($current_calendar_week, $current_calendar_year);
+                $lieferwochen[] = new VersandkostenBeezLieferwoche($current_calendar_week, $current_calendar_year, $reserved_uuid);
             }
             return $lieferwochen;
         }
@@ -398,12 +401,19 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
         {
             $lieferwoche = $_POST['lieferwoche'] ?? null;
             $lieferjahr = $_POST['lieferjahr'] ?? null;
-            if($lieferwoche !== null && $lieferjahr !== null && $this->versandkostenBeezAvailabilityDao->is_available($lieferwoche, $lieferjahr)){
+            // get or create uuid for reservation and save it
+            $reserved_uuid = WC()->session->get('versandkosten_beez_reservierung_uuid', uniqid());
+            WC()->session->set('versandkosten_beez_reservierung_uuid', $reserved_uuid);
+
+            if(isset($lieferwoche) && isset($lieferjahr) && $this->versandkostenBeezAvailabilityDao->is_available($lieferwoche, $lieferjahr, $reserved_uuid)){
                 //change cart data of item with lieferwoche
                 $cart_item_data['lieferwoche'] = array(
                     'woche' =>$lieferwoche,
                     'jahr' => $lieferjahr
                 );
+
+                // save reservation
+                $this->versandkostenBeezAvailabilityDao->reserve_availability($lieferwoche, $lieferjahr, $reserved_uuid);
             }else{
                 throw new Exception("Die ausgewählte Lieferwoche ist nicht verfügbar.");
             }
@@ -416,12 +426,15 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
          */
         function show_shipping_information_in_cart($item_data, $cart_item_data ) : array
         {
+            $reserved_uuid = WC()->session->get('versandkosten_beez_reservierung_uuid') ?? null;
+
             // Check if shipping week is set
             if( isset( $cart_item_data['lieferwoche'] ) ) {
                 $week = $cart_item_data['lieferwoche']['woche'] ?? "";
                 $year = $cart_item_data['lieferwoche']['jahr'] ?? "";
 
-                $lieferwochen_info = new VersandkostenBeezLieferwoche($week, $year);
+                $lieferwochen_info = new VersandkostenBeezLieferwoche($week, $year, $reserved_uuid);
+                $this->versandkostenBeezAvailabilityDao->reserve_availability($week, $year, $reserved_uuid);
                 $start = $lieferwochen_info->getStart();
                 $end = $lieferwochen_info->getEnd();
 
@@ -447,11 +460,13 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
          * @throws Exception
          */
         function add_shipping_week_information_to_order($item, $cart_item_key, $values, $order ) {
+            $reserved_uuid = WC()->session->get('versandkosten_beez_reservierung_uuid') ?? null;
+
             if( isset( $values['lieferwoche'] ) ) {
                 $week = $values['lieferwoche']['woche'] ?? "";
                 $year = $values['lieferwoche']['jahr'] ?? "";
 
-                $lieferwochen_info = new VersandkostenBeezLieferwoche($week, $year);
+                $lieferwochen_info = new VersandkostenBeezLieferwoche($week, $year, $reserved_uuid);
                 $start = $lieferwochen_info->getStart();
                 $end = $lieferwochen_info->getEnd();
 
@@ -517,6 +532,9 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
          */
         function checkout_order(int $order_id)
         {
+            // get reservation uuid from session
+            $reservation_uuid = WC()->session->get('versandkosten_beez_reservierung_uuid') ?? null;
+
             $order = wc_get_order($order_id);
             $lieferwochen = $order->get_meta('hidden_lieferwoche') ?? array();
             if(count($lieferwochen) != 0) {
@@ -529,7 +547,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 $lieferwochen = array_map("unserialize", array_unique(array_map("serialize", $lieferwochen)));
 
                 // check if all lieferwochen are still available
-                $all_available = $this->versandkostenBeezAvailabilityDao->are_all_orders_available($lieferwochen);
+                $all_available = $this->versandkostenBeezAvailabilityDao->are_all_orders_available($lieferwochen, $reservation_uuid);
                 if(!$all_available['status']){
                     $lieferwochen_string = "";
                     foreach($all_available['lieferwochen'] as $lieferwoche){
@@ -539,13 +557,15 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                     return;
                 }
 
+
                 // take availability
                 foreach ($lieferwochen as $lieferwoche) {
-                    if(!$this->versandkostenBeezAvailabilityDao->take_availability($lieferwoche['woche'], $lieferwoche['jahr'], $order_id)){
+                    if(!$this->versandkostenBeezAvailabilityDao->take_availability($lieferwoche['woche'], $lieferwoche['jahr'], $order_id, $reservation_uuid)){
                         $order->update_status('failed', 'Lieferwoche KW '.$lieferwoche['woche'] .' ist nicht mehr verfügbar');
                         $this->add_notice("Die Lieferwoche KW ".$lieferwoche['woche'] ." ist nicht mehr verfügbar", "error", true);
                     };
                 }
+                WC()->session->__unset('versandkosten_beez_reservierung_uuid');
             }
         }
 

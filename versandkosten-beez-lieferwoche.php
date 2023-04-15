@@ -13,15 +13,18 @@ if(!class_exists('VersandkostenBeezLieferwoche')):
         private bool $enabled;
         private int $taken_capacity;
         private int $max_capacity;
+        private int $temporarily_reserved_capacity;
 
-        function __construct($week, $year){
+        function __construct($week, $year, $reservation_uuid = null)
+        {
             $VersandkostenBeezAvailabilityDao = VersandkostenBeezAvailabilityDao::getInstance();
 
             $this->week = $week;
             $this->year = $year;
-            $this->enabled = $VersandkostenBeezAvailabilityDao->is_available($week, $year);
+            $this->enabled = $VersandkostenBeezAvailabilityDao->is_available($week, $year, $reservation_uuid);
             $this->max_capacity = $VersandkostenBeezAvailabilityDao->get_max_availability($week, $year);
-            $this->taken_capacity = $VersandkostenBeezAvailabilityDao->get_taken_availability($week, $year);
+            $this->taken_capacity = $VersandkostenBeezAvailabilityDao->get_taken_availability($week, $year, $reservation_uuid);
+            $this->temporarily_reserved_capacity = $VersandkostenBeezAvailabilityDao->get_reserved_capacity($week, $year);
 
             $this->calculateStartAndEnd($week, $year);
         }
@@ -80,6 +83,11 @@ if(!class_exists('VersandkostenBeezLieferwoche')):
         public function getAvailableCapacity(): int
         {
             return $this->max_capacity - $this->taken_capacity;
+        }
+
+        public function getTemporarilyReservedCapacity()
+        {
+            return $this->temporarily_reserved_capacity;
         }
 
     }
