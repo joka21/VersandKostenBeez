@@ -236,6 +236,19 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
          */
         public function validate_german_zip($plz) {
             if(!preg_match('/^\d{5}$/',$plz)) return false;
+
+            try{
+                $this->get_distance_duration($this->origin_plz, $plz);
+            }catch (Exception $e){
+                return false;
+            }
+
+            //hardcoded check if it is a German island, if above doesn't work (array isn't complete though):
+            //$not_allowed_plz = array(26465, 26474, 26486, 26548, 26571, 26579, 26757, 25845, 25846, 25847, 25849, 25859, 25863, 25869, 25929, 25930, 25931, 25932, 25933, 25938, 25939, 25940, 25941, 25942, 25946, 25947, 25948, 25949, 25952,
+            //if(in_array($plz, $not_allowed_plz)){
+            //    return false;
+            //}
+
             return $this->get_plz_info($plz) != null;
         }
 
@@ -279,6 +292,10 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             $cache_key = 'distance_duration_' . $origin_zip . '_' . $destination_zip;
             $distance_duration = get_transient($cache_key);
             if ($distance_duration !== false) {
+                if($distance_duration == 'error') {
+                    throw new Exception("Versandkosten können nicht berechnet werden");
+                }
+
                 return $distance_duration;
             }
 
@@ -293,17 +310,23 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             $url .= '?' . http_build_query($params);
             $response = file_get_contents($url);
             $data = json_decode($response);
-            if ($data->status == 'OK') {
+            if ($data->status == 'OK' && $data->rows[0]->elements[0]->status == 'OK') {
                 $distance = $data->rows[0]->elements[0]->distance->value;
                 $duration = $data->rows[0]->elements[0]->duration->value;
+
+                // set maximal driving speed to 80 km/h
+                if($duration > $distance / 80 * 3.6) {
+                    $duration = $distance / 80 * 3.6;
+                }
 
                 // cache result for 30 days
                 $ret = array('distance' => $distance, 'duration' => $duration);
                 set_transient($cache_key, $ret, 60 * 60 * 24 * 30);
                 return $ret;
             } else {
-                $this->add_notice('Es kam zu einem Fehler beim Zugriff auf die Google Maps API', 'error');
-                return(array('distance' => 0, 'duration' => 0));
+                // cache error for 30 days
+                set_transient($cache_key, 'error', 60 * 60 * 24 * 30);
+                throw new Exception('Es kam zu einem Fehler beim Zugriff auf die Google Maps API');
             }
         }
 
@@ -319,7 +342,12 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             // Validate German zip code
             if($this->validate_german_zip($destination_plz)){
                 // Get distance and duration between origin and destination
-                $result = $this->get_distance_duration($this->origin_plz, $destination_plz);
+                try {
+                    $result = $this->get_distance_duration($this->origin_plz, $destination_plz);
+                } catch (Exception $e) {
+                    $this->add_notice($e->getMessage(), 'error');
+                    return 0;
+                }
 
                 // Convert meters to kilometers and seconds to hours
                 $entfernung = $result['distance'] / 1000;
