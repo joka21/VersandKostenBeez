@@ -315,9 +315,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                 $duration = $data->rows[0]->elements[0]->duration->value;
 
                 // set maximal driving speed to 80 km/h
-                if($duration > $distance / 80 * 3.6) {
-                    $duration = $distance / 80 * 3.6;
-                }
+                $duration = max($duration, ($distance / 80 * 3.6));
 
                 // cache result for 30 days
                 $ret = array('distance' => $distance, 'duration' => $duration);
