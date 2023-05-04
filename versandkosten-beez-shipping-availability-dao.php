@@ -298,12 +298,14 @@
 
                     // get current day info
                     $current_day = date('w');
-                    $current_week = date('W');
+                    $current_nextweek = date('W', strtotime('+1 week'));
                     $current_year = date('Y');
 
+                    $space_available = $this->get_max_availability($calendar_week, $year) > $this->get_taken_availability($calendar_week, $year, $reserved_uuid);
+                    $next_week_available = ($calendar_week == $current_nextweek && $current_day < 5);
+
                     // check if the remaining availability is not 0 and if the week is not in the past and today is not friday or later
-                    return ($this->get_max_availability($calendar_week, $year) > $this->get_taken_availability($calendar_week, $year, $reserved_uuid)) &&
-                        ($year >= $current_year && ($calendar_week > $current_week || ($calendar_week == $current_week && $current_day < 5)));
+                    return $space_available && ($year > $current_year || ($year == $current_year && ($calendar_week > $current_nextweek || $next_week_available)));
                 }
 
                 /**
