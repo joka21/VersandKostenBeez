@@ -27,6 +27,7 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             $this->method_title         = ('Versand Kosten Beez Einstellungen');
             $this->method_description   = ('Einstellungen für die Berechnung der Versandkosten' );
             $this->tax_status           = "none";
+
             $this->init();
         }
 
@@ -57,12 +58,11 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
             $this->enabled              = $this->get_option( 'enabled' ) ?? "yes";
             $this->title                = $this->get_option( 'title' ) ?? "Versandkosten";
 
+            // Save settings in admin if you have any defined
+            add_action('woocommerce_update_options_shipping_' . $this->id, array($this, 'process_admin_options'));
+
             if(!self::$hooks_loaded) {
                 self::$hooks_loaded = true;
-
-                // Save settings in admin if you have any defined
-                add_action('woocommerce_update_options_shipping_' . $this->id, array($this, 'process_admin_options'));
-
                 add_filter( 'woocommerce_cart_no_shipping_available_html', array($this, 'change_no_shipping_message'));
                 add_filter( 'woocommerce_no_shipping_available_html',  array($this, 'change_no_shipping_message'));
 
