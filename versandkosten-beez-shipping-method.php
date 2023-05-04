@@ -411,8 +411,8 @@ if ( ! class_exists( 'Versand_Kosten_Beez_Shipping_Method' )) :
                     $current_week_offset++;
                 }
 
-                $current_calendar_week = date("W", strtotime("+" . ($current_week_offset - 1) . " week monday"));
-                $current_calendar_year = date("Y", strtotime("+" . ($current_week_offset - 1) . " week monday"));
+                $current_calendar_week = date("W", strtotime("+" . $current_week_offset . " week monday"));
+                $current_calendar_year = date("Y", strtotime("+" . $current_week_offset . " week monday"));
 
                 $lieferwochen[] = new VersandkostenBeezLieferwoche($current_calendar_week, $current_calendar_year, $reserved_uuid);
             }

@@ -301,10 +301,10 @@
                     $current_nextweek = date('W', strtotime('+1 week'));
                     $current_year = date('Y');
 
+                    // check if space is available
                     $space_available = $this->get_max_availability($calendar_week, $year) > $this->get_taken_availability($calendar_week, $year, $reserved_uuid);
+                    // check if the calendar week is after the current week and today is not friday
                     $next_week_available = ($calendar_week == $current_nextweek && $current_day < 5);
-
-                    // check if the remaining availability is not 0 and if the week is not in the past and today is not friday or later
                     return $space_available && ($year > $current_year || ($year == $current_year && ($calendar_week > $current_nextweek || $next_week_available)));
                 }
 

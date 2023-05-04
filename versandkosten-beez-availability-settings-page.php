@@ -105,8 +105,8 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
                     <tbody>
                     <?php
                     for($i = 1; $i <= 52; $i++){
-                        //ignore all weeks that are already in the past
-                        if($i < date('W') && $year <= date('Y')){
+                        // skip weeks that are in the past or this week
+                        if($i < date('W',  strtotime('+1 week')) && $year <= date('Y')){
                             continue;
                         }
 
