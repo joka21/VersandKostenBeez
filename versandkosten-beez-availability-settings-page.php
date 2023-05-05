@@ -104,9 +104,11 @@ if(!class_exists('VersandkostenBeezAvailabilitySettingsPage')) :
                     </thead>
                     <tbody>
                     <?php
+                    $next_week = date('W', strtotime('+1 week'));
+                    $current_year = date('Y');
                     for($i = 1; $i <= 52; $i++){
                         // skip weeks that are in the past or this week
-                        if($i < date('W',  strtotime('+1 week')) && $year <= date('Y')){
+                        if($year < $current_year || ($year == $current_year && $i < $next_week) || ($year == $current_year && $i == $next_week && date('w') >= 5)){
                             continue;
                         }
 
